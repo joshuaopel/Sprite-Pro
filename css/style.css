@@ -101,7 +101,7 @@ small { font-size: 10px; color: var(--text-dim); }
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   padding: 4px 0;
 }
-.menu-group:hover .dropdown { display: flex; flex-direction: column; }
+.menu-group.open .dropdown { display: flex; flex-direction: column; }
 .dropdown button {
   padding: 6px 14px; text-align: left; color: var(--text);
   display: flex; justify-content: space-between;
@@ -113,9 +113,47 @@ small { font-size: 10px; color: var(--text-dim); }
 .menu-right {
   margin-left: auto;
   display: flex; align-items: center; gap: 8px;
-  padding-right: 10px;
+  padding-right: 10px; flex-wrap: nowrap;
 }
 #canvas-info { color: var(--text-dim); font-size: 11px; min-width: 60px; text-align: right; }
+
+/* Canvas size widget */
+.canvas-size-widget {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 6px;
+}
+.canvas-size-widget input[type=number] {
+  width: 40px; background: transparent; border: none;
+  color: var(--text); font-size: 11px; text-align: center; padding: 2px;
+}
+.canvas-size-widget input[type=number]:focus { outline: none; color: var(--accent); }
+.canvas-size-widget span { color: var(--text-dim); font-size: 11px; }
+.canvas-size-widget button {
+  background: var(--accent); color: #fff; border-radius: 3px;
+  padding: 1px 6px; font-size: 11px; font-weight: 700;
+  transition: background 0.1s;
+}
+.canvas-size-widget button:hover { background: var(--accent-hover); }
+
+/* Model loading overlay */
+#model-loading {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: none; align-items: center; justify-content: center;
+  flex-direction: column; gap: 12px; z-index: 10;
+  color: var(--text); font-size: 13px;
+}
+#model-loading.visible { display: flex; }
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#model-load-status { color: var(--text-dim); font-size: 11px; }
 
 .tab-btn {
   padding: 4px 12px; border-radius: 4px; font-size: 12px;

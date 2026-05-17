@@ -144,40 +144,66 @@ class Model3DRenderer {
     loop();
   }
 
+  _showLoading(msg) {
+    const el = document.getElementById('model-loading');
+    document.getElementById('model-load-status').textContent = msg || '';
+    el.classList.add('visible');
+  }
+
+  _hideLoading() {
+    document.getElementById('model-loading').classList.remove('visible');
+  }
+
+  _showHint(msg, isError) {
+    this.hint.textContent = msg;
+    this.hint.style.color = isError ? '#e05555' : '';
+    this.hint.style.display = '';
+  }
+
   loadModel(file) {
-    if (typeof THREE === 'undefined') return;
-    if (typeof THREE.GLTFLoader === 'undefined') {
-      alert('GLTFLoader not available. Check your internet connection and reload the page.');
+    if (typeof THREE === 'undefined') {
+      this._showHint('Three.js failed to load. Check network and reload.', true);
       return;
     }
+    if (typeof THREE.GLTFLoader === 'undefined') {
+      this._showHint('GLTFLoader failed to load. Check network and reload.', true);
+      return;
+    }
+
+    this._showLoading('Reading file…');
     const url = URL.createObjectURL(file);
-    {
-      const loader = new THREE.GLTFLoader();
-      loader.load(url, gltf => {
+    const loader = new THREE.GLTFLoader();
+
+    loader.load(
+      url,
+      gltf => {
+        this._hideLoading();
         if (this.model) this.scene.remove(this.model);
         this.model = gltf.scene;
 
-        // Center and normalize
+        // Center and normalize scale
         const box = new THREE.Box3().setFromObject(this.model);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
         const scale = 2 / maxDim;
         this.model.scale.setScalar(scale);
-        this.model.position.sub(center.multiplyScalar(scale));
-        this.model.position.y += (size.y * scale) / 2;
-
+        // Recompute center after scaling
+        this.model.position.set(
+          -center.x * scale,
+          -center.y * scale + (size.y * scale) / 2,
+          -center.z * scale
+        );
         this.scene.add(this.model);
 
         // Animations
         this.mixer = new THREE.AnimationMixer(this.model);
-        this.animActions = gltf.animations.map(clip => this.mixer.clipAction(clip));
+        this.animActions = (gltf.animations || []).map(clip => this.mixer.clipAction(clip));
 
         if (this.animActions.length > 0) {
           this.totalAnimFrames = Math.round(this.animActions[0].getClip().duration * 30);
           const slider = document.getElementById('anim-frame-slider');
-          slider.max = this.totalAnimFrames;
-          slider.disabled = false;
+          slider.max = this.totalAnimFrames; slider.disabled = false;
           document.getElementById('anim-play-btn').disabled = false;
           document.getElementById('anim-frame-info').textContent =
             `${this.animActions.length} animation(s), ${this.totalAnimFrames} frames`;
@@ -190,12 +216,24 @@ class Model3DRenderer {
         this.hint.style.display = 'none';
         this.renderBtn.disabled = false;
         URL.revokeObjectURL(url);
-      }, undefined, err => {
-        console.error('Failed to load model:', err);
-        alert('Failed to load model. Make sure it is a valid GLB/GLTF file.');
+      },
+      xhr => {
+        if (xhr.total) {
+          const pct = Math.round((xhr.loaded / xhr.total) * 100);
+          document.getElementById('model-load-status').textContent = `${pct}%`;
+        } else {
+          document.getElementById('model-load-status').textContent =
+            `${(xhr.loaded / 1024).toFixed(0)} KB…`;
+        }
+      },
+      err => {
+        this._hideLoading();
         URL.revokeObjectURL(url);
-      });
-    }
+        const msg = err && err.message ? err.message : String(err);
+        console.error('GLB load error:', msg);
+        this._showHint('Failed to load: ' + msg, true);
+      }
+    );
   }
 
   renderSprites() {

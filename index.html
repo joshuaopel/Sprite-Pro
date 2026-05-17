@@ -51,7 +51,12 @@
       </div>
     </div>
     <div class="menu-right">
-      <span id="canvas-info">32 × 32</span>
+      <div class="canvas-size-widget" title="Canvas size — edit and press ✓ to resize">
+        <input type="number" id="quick-width" value="32" min="1" max="4096">
+        <span>×</span>
+        <input type="number" id="quick-height" value="32" min="1" max="4096">
+        <button id="quick-resize" title="Apply resize">✓</button>
+      </div>
       <button id="tab-editor" class="tab-btn active">Editor</button>
       <button id="tab-model" class="tab-btn">3D → Sprite</button>
     </div>
@@ -274,6 +279,11 @@
       <div id="model-preview-area">
         <canvas id="model-preview-canvas"></canvas>
         <div id="model-hint">Load a GLB/GLTF model to get started</div>
+        <div id="model-loading">
+          <div class="spinner"></div>
+          <span>Loading model…</span>
+          <span id="model-load-status"></span>
+        </div>
       </div>
 
       <div id="render-results">

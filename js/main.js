@@ -163,6 +163,40 @@
     canvasEng.renderThumbs();
   }
 
+  // ===== DROPDOWN MENUS (click-driven, works on touch) =====
+  function closeAllMenus() {
+    document.querySelectorAll('.menu-group.open').forEach(g => g.classList.remove('open'));
+  }
+  document.querySelectorAll('.menu-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const group = btn.closest('.menu-group');
+      const wasOpen = group.classList.contains('open');
+      closeAllMenus();
+      if (!wasOpen) group.classList.add('open');
+    });
+  });
+  document.addEventListener('click', () => closeAllMenus());
+  document.addEventListener('touchstart', () => closeAllMenus(), { passive: true });
+
+  // ===== CANVAS SIZE WIDGET =====
+  function syncSizeInputs() {
+    document.getElementById('quick-width').value = layerMgr.width;
+    document.getElementById('quick-height').value = layerMgr.height;
+  }
+  function applyQuickResize() {
+    const w = clamp(+document.getElementById('quick-width').value, 1, 4096);
+    const h = clamp(+document.getElementById('quick-height').value, 1, 4096);
+    layerMgr.resize(w, h);
+    canvasEng.reinit(w, h);
+    history.push(layerMgr.layers);
+    canvasEng.render();
+    syncSizeInputs();
+  }
+  document.getElementById('quick-resize').addEventListener('click', applyQuickResize);
+  document.getElementById('quick-width').addEventListener('keydown', e => { if (e.key === 'Enter') applyQuickResize(); });
+  document.getElementById('quick-height').addEventListener('keydown', e => { if (e.key === 'Enter') applyQuickResize(); });
+
   // ===== PANEL TABS =====
   document.querySelectorAll('.panel-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -213,8 +247,7 @@
         case 'flip-v': flipCanvas('v'); break;
         case 'rotate-90': rotateCanvas(); break;
       }
-      document.querySelectorAll('.dropdown').forEach(d => d.style.display = 'none');
-      setTimeout(() => document.querySelectorAll('.dropdown').forEach(d => d.style.display = ''), 100);
+      closeAllMenus();
     });
   });
 
@@ -233,6 +266,7 @@
       layerMgr.renderUI();
       canvasEng.render();
       canvasEng.renderThumbs();
+      syncSizeInputs();
     };
     img.src = URL.createObjectURL(file);
     e.target.value = '';
@@ -308,6 +342,7 @@
     history.push(layerMgr.layers);
     canvasEng.render();
     canvasEng.renderThumbs();
+    syncSizeInputs();
   }
 
   // ===== MODALS =====
@@ -362,6 +397,7 @@
     layerMgr.renderUI();
     canvasEng.render();
     timeline.render();
+    syncSizeInputs();
     hideModals();
   });
 
@@ -382,6 +418,7 @@
     canvasEng.reinit(w, h);
     history.push(layerMgr.layers);
     canvasEng.render();
+    syncSizeInputs();
     hideModals();
   });
 
