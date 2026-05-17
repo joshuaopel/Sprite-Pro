@@ -1,0 +1,477 @@
+// 3D GLB Model → Sprite Renderer using Three.js
+class Model3DRenderer {
+  constructor() {
+    this.scene = null;
+    this.camera = null;
+    this.renderer = null;
+    this.model = null;
+    this.mixer = null;
+    this.clock = null;
+    this.animActions = [];
+    this.currentAnimIdx = 0;
+    this.animFrame = 0;
+    this.totalAnimFrames = 0;
+    this.isPlaying = false;
+    this._rafId = null;
+    this.renderedSprites = [];
+
+    this.previewCanvas = document.getElementById('model-preview-canvas');
+    this.hint = document.getElementById('model-hint');
+    this.renderBtn = document.getElementById('render-sprites-btn');
+    this.importBtn = document.getElementById('import-to-editor-btn');
+    this.renderGrid = document.getElementById('render-grid');
+
+    this._initThree();
+    this._bindUI();
+  }
+
+  _initThree() {
+    if (typeof THREE === 'undefined') {
+      console.error('Three.js not loaded');
+      return;
+    }
+    this.scene = new THREE.Scene();
+    this.clock = new THREE.Clock();
+
+    // Camera
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 1000);
+    this._applyCamera('isometric');
+
+    // Renderer
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.previewCanvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true
+    });
+    this.renderer.setPixelRatio(1);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this._resizeRenderer();
+
+    // Lighting
+    this._applyLighting('standard');
+
+    // Start preview render loop
+    this._previewLoop();
+  }
+
+  _resizeRenderer() {
+    const area = document.getElementById('model-preview-area');
+    const w = area.clientWidth || 600;
+    const h = area.clientHeight || 400;
+    this.renderer.setSize(w, h);
+    this.previewCanvas.style.width = w+'px';
+    this.previewCanvas.style.height = h+'px';
+  }
+
+  _applyCamera(preset) {
+    const elev = +document.getElementById('camera-elev').value;
+    const dist = +document.getElementById('camera-dist').value;
+    const zoomF = +document.getElementById('camera-zoom').value / 10;
+
+    let elevation, azimuth;
+    switch(preset) {
+      case 'isometric':   elevation = 35.264; azimuth = 45; break;
+      case 'top-down':    elevation = 90;     azimuth = 0;  break;
+      case 'side':        elevation = 0;      azimuth = 90; break;
+      case '3quarter':    elevation = 30;     azimuth = 30; break;
+      case 'custom':      elevation = elev;   azimuth = 0;  break;
+      default:            elevation = 35.264; azimuth = 45;
+    }
+    const elevRad = elevation * Math.PI / 180;
+    const azRad = azimuth * Math.PI / 180;
+    const d = (preset === 'custom' ? dist : 5);
+
+    this.camera.position.set(
+      d * Math.cos(elevRad) * Math.sin(azRad),
+      d * Math.sin(elevRad),
+      d * Math.cos(elevRad) * Math.cos(azRad)
+    );
+    this.camera.lookAt(0, 0.5, 0);
+
+    const s = (preset === 'custom' ? zoomF : 1.5);
+    this.camera.left = -s; this.camera.right = s;
+    this.camera.top = s;   this.camera.bottom = -s;
+    this.camera.updateProjectionMatrix();
+  }
+
+  _applyLighting(preset) {
+    // Remove existing lights
+    this.scene.children.filter(c => c.isLight).forEach(l => this.scene.remove(l));
+
+    switch(preset) {
+      case 'standard': {
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+        dir.position.set(5, 10, 5);
+        dir.castShadow = true;
+        this.scene.add(ambient, dir);
+        break;
+      }
+      case 'soft': {
+        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+        const h = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.8);
+        this.scene.add(ambient, h);
+        break;
+      }
+      case 'hard': {
+        const ambient = new THREE.AmbientLight(0x111111, 1);
+        const dir = new THREE.DirectionalLight(0xffffff, 2.0);
+        dir.position.set(3, 8, 2);
+        dir.castShadow = true;
+        this.scene.add(ambient, dir);
+        break;
+      }
+      case 'flat': {
+        const ambient = new THREE.AmbientLight(0xffffff, 2.0);
+        this.scene.add(ambient);
+        break;
+      }
+    }
+  }
+
+  _previewLoop() {
+    const loop = () => {
+      this._rafId = requestAnimationFrame(loop);
+      if (this.mixer) {
+        this.mixer.update(this.clock.getDelta());
+      }
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
+    };
+    loop();
+  }
+
+  loadModel(file) {
+    if (typeof THREE === 'undefined') return;
+    if (typeof THREE.GLTFLoader === 'undefined') {
+      alert('GLTFLoader not available. Check your internet connection and reload the page.');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    {
+      const loader = new THREE.GLTFLoader();
+      loader.load(url, gltf => {
+        if (this.model) this.scene.remove(this.model);
+        this.model = gltf.scene;
+
+        // Center and normalize
+        const box = new THREE.Box3().setFromObject(this.model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 2 / maxDim;
+        this.model.scale.setScalar(scale);
+        this.model.position.sub(center.multiplyScalar(scale));
+        this.model.position.y += (size.y * scale) / 2;
+
+        this.scene.add(this.model);
+
+        // Animations
+        this.mixer = new THREE.AnimationMixer(this.model);
+        this.animActions = gltf.animations.map(clip => this.mixer.clipAction(clip));
+
+        if (this.animActions.length > 0) {
+          this.totalAnimFrames = Math.round(this.animActions[0].getClip().duration * 30);
+          const slider = document.getElementById('anim-frame-slider');
+          slider.max = this.totalAnimFrames;
+          slider.disabled = false;
+          document.getElementById('anim-play-btn').disabled = false;
+          document.getElementById('anim-frame-info').textContent =
+            `${this.animActions.length} animation(s), ${this.totalAnimFrames} frames`;
+        } else {
+          document.getElementById('anim-frame-info').textContent = 'No animation';
+          document.getElementById('anim-frame-slider').disabled = true;
+          document.getElementById('anim-play-btn').disabled = true;
+        }
+
+        this.hint.style.display = 'none';
+        this.renderBtn.disabled = false;
+        URL.revokeObjectURL(url);
+      }, undefined, err => {
+        console.error('Failed to load model:', err);
+        alert('Failed to load model. Make sure it is a valid GLB/GLTF file.');
+        URL.revokeObjectURL(url);
+      });
+    }
+  }
+
+  renderSprites() {
+    if (!this.model) return;
+    const w = +document.getElementById('sprite-w').value;
+    const h = +document.getElementById('sprite-h').value;
+    const dirs = +document.querySelector('input[name="dirs"]:checked').value;
+    const framesPerDir = +document.getElementById('frames-per-dir').value;
+    const bgMode = document.querySelector('input[name="bg"]:checked').value;
+    const bgColor = document.getElementById('render-bg-color').value;
+
+    const dirAngles = dirs === 8
+      ? [0, 45, 90, 135, 180, 225, 270, 315]
+      : dirs === 4
+      ? [0, 90, 180, 270]
+      : [0];
+
+    const dirNames = {
+      1: ['S'],
+      4: ['S','E','N','W'],
+      8: ['S','SE','E','NE','N','NW','W','SW']
+    };
+
+    this.renderedSprites = [];
+    this.renderGrid.innerHTML = '';
+
+    // Offscreen renderer
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = w; offCanvas.height = h;
+    const offRenderer = new THREE.WebGLRenderer({
+      canvas: offCanvas, antialias: false, alpha: true,
+      preserveDrawingBuffer: true
+    });
+    offRenderer.setSize(w, h, false);
+    offRenderer.setPixelRatio(1);
+
+    // Setup offscreen camera
+    const s = 1.5;
+    const offCamera = new THREE.OrthographicCamera(-s, s, s, -s, 0.01, 1000);
+
+    const cameraPreset = document.getElementById('camera-preset').value;
+    let baseElev;
+    switch(cameraPreset) {
+      case 'isometric': baseElev = 35.264; break;
+      case 'top-down':  baseElev = 80;     break;
+      case 'side':      baseElev = 10;     break;
+      case '3quarter':  baseElev = 30;     break;
+      case 'custom':    baseElev = +document.getElementById('camera-elev').value; break;
+      default:          baseElev = 35.264;
+    }
+    const elevRad = baseElev * Math.PI / 180;
+    const d = 5;
+
+    // Apply lighting to scene
+    this._applyLighting(document.getElementById('lighting-preset').value);
+
+    dirAngles.forEach((dirAngle, di) => {
+      const baseAzRad = dirAngle * Math.PI / 180;
+
+      for (let fi = 0; fi < framesPerDir; fi++) {
+        // Set animation time
+        if (this.mixer && this.animActions.length > 0) {
+          const t = (fi / framesPerDir) * this.animActions[0].getClip().duration;
+          this.mixer.setTime(t);
+        }
+
+        // Position camera around model
+        const azRad = baseAzRad;
+        offCamera.position.set(
+          d * Math.cos(elevRad) * Math.sin(azRad),
+          d * Math.sin(elevRad),
+          d * Math.cos(elevRad) * Math.cos(azRad)
+        );
+        offCamera.lookAt(0, 0.5, 0);
+        offCamera.updateProjectionMatrix();
+
+        // Set background
+        if (bgMode === 'transparent') {
+          offRenderer.setClearColor(0x000000, 0);
+        } else {
+          const c = new THREE.Color(bgColor);
+          offRenderer.setClearColor(c, 1);
+        }
+
+        offRenderer.render(this.scene, offCamera);
+
+        // Grab pixels via WebGL readPixels (renderer uses WebGL context)
+        const imageData = this._getRendererPixels(offRenderer, w, h);
+
+        this.renderedSprites.push({
+          dir: dirAngles[di],
+          dirName: (dirNames[dirs] || ['?'])[di] || di,
+          frame: fi,
+          imageData,
+          width: w,
+          height: h
+        });
+
+        // Add to grid
+        this._addSpriteCard(imageData, w, h, (dirNames[dirs]||['?'])[di]||di, fi, framesPerDir);
+      }
+    });
+
+    this.importBtn.disabled = false;
+    offRenderer.dispose();
+  }
+
+  _getRendererPixels(renderer, w, h) {
+    const pixels = new Uint8Array(w * h * 4);
+    const gl = renderer.getContext ? renderer.getContext() : renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
+    if (!gl) {
+      // Fallback: read from 2D canvas (won't work for WebGL but graceful)
+      return new ImageData(w, h);
+    }
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    // Flip Y
+    const flipped = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const src = (h - 1 - y) * w * 4;
+      flipped.set(pixels.slice(src, src + w * 4), y * w * 4);
+    }
+    return new ImageData(new Uint8ClampedArray(flipped), w, h);
+  }
+
+  _addSpriteCard(imageData, w, h, dirName, frameIdx, totalFrames) {
+    const card = document.createElement('div');
+    card.className = 'render-sprite-card';
+
+    const canvas = document.createElement('canvas');
+    const displaySize = Math.max(64, Math.min(128, 128));
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = displaySize+'px';
+    canvas.style.height = displaySize+'px';
+    canvas.getContext('2d').putImageData(imageData, 0, 0);
+
+    const label = document.createElement('span');
+    label.textContent = totalFrames > 1
+      ? `${dirName} f${frameIdx+1}`
+      : `Dir: ${dirName}`;
+
+    card.appendChild(canvas);
+    card.appendChild(label);
+    this.renderGrid.appendChild(card);
+  }
+
+  importToEditor(layerMgr, timeline, canvasEngine) {
+    if (this.renderedSprites.length === 0) return;
+
+    const { width, height } = this.renderedSprites[0];
+
+    // Resize canvas to sprite size
+    layerMgr.resize(width, height);
+    canvasEngine.reinit(width, height);
+
+    // Group by direction, create one layer per direction
+    const byDir = {};
+    this.renderedSprites.forEach(s => {
+      if (!byDir[s.dirName]) byDir[s.dirName] = [];
+      byDir[s.dirName].push(s);
+    });
+
+    const dirs = Object.keys(byDir);
+    const maxFrames = Math.max(...dirs.map(d => byDir[d].length));
+
+    // Ensure enough frames in timeline
+    while (timeline.frameCount < maxFrames) timeline.addFrame();
+
+    // Clear existing layers and create one per direction
+    layerMgr.layers = [];
+    layerMgr.activeIdx = 0;
+
+    dirs.forEach(dirName => {
+      const layer = layerMgr.addLayer(`Dir ${dirName}`);
+      byDir[dirName].forEach((sprite, fi) => {
+        if (fi < layer.frames.length) {
+          layer.frames[fi] = sprite.imageData;
+        }
+      });
+    });
+
+    layerMgr.renderUI();
+    canvasEngine.render();
+    canvasEngine.renderThumbs();
+
+    // Switch to editor tab
+    document.getElementById('tab-editor').click();
+  }
+
+  _setCameraFromUI() {
+    const preset = document.getElementById('camera-preset').value;
+    this._applyCamera(preset);
+  }
+
+  _bindUI() {
+    // File drop zone
+    const dropZone = document.getElementById('model-drop-zone');
+    const fileInput = document.getElementById('model-file-input');
+    const browseBtn = document.getElementById('model-browse');
+
+    browseBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) this.loadModel(fileInput.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault(); dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
+        this.loadModel(file);
+      } else {
+        alert('Please drop a .glb or .gltf file.');
+      }
+    });
+
+    // Camera preset
+    document.getElementById('camera-preset').addEventListener('change', () => {
+      const preset = document.getElementById('camera-preset').value;
+      document.getElementById('custom-camera-controls').style.display =
+        preset === 'custom' ? 'flex' : 'none';
+      this._setCameraFromUI();
+    });
+    document.getElementById('custom-camera-controls').style.display = 'none';
+
+    // Custom camera sliders
+    ['camera-elev','camera-dist','camera-zoom'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        document.getElementById('elev-val').textContent = document.getElementById('camera-elev').value;
+        document.getElementById('dist-val').textContent = document.getElementById('camera-dist').value;
+        document.getElementById('zoom-val').textContent = (document.getElementById('camera-zoom').value/10).toFixed(1);
+        this._setCameraFromUI();
+      });
+    });
+
+    // Lighting
+    document.getElementById('lighting-preset').addEventListener('change', () => {
+      this._applyLighting(document.getElementById('lighting-preset').value);
+    });
+
+    // Render button
+    this.renderBtn.addEventListener('click', () => this.renderSprites());
+
+    // Render background color visibility
+    document.querySelectorAll('input[name="bg"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.getElementById('render-bg-color').style.display =
+          radio.value === 'color' ? 'block' : 'none';
+      });
+    });
+    document.getElementById('render-bg-color').style.display = 'none';
+
+    // Animation slider
+    document.getElementById('anim-frame-slider').addEventListener('input', e => {
+      if (!this.mixer || !this.animActions.length) return;
+      const t = (+e.target.value / this.totalAnimFrames) * this.animActions[0].getClip().duration;
+      this.mixer.setTime(t);
+    });
+
+    // Anim play button
+    document.getElementById('anim-play-btn').addEventListener('click', () => {
+      if (!this.animActions.length) return;
+      if (this.isPlaying) {
+        this.animActions.forEach(a => a.paused = true);
+        this.isPlaying = false;
+        document.getElementById('anim-play-btn').textContent = '▶ Play';
+      } else {
+        this.animActions.forEach(a => { a.reset(); a.play(); a.paused = false; });
+        this.isPlaying = true;
+        document.getElementById('anim-play-btn').textContent = '⏸ Pause';
+      }
+    });
+
+    // Resize renderer on window resize
+    window.addEventListener('resize', () => this._resizeRenderer());
+  }
+}

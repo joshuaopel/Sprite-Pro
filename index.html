@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Sprite Pro</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Top Menu Bar -->
+  <div id="menubar">
+    <div class="menu-logo">Sprite Pro</div>
+    <div class="menu-items">
+      <div class="menu-group" data-menu="file">
+        <button class="menu-btn">File</button>
+        <div class="dropdown">
+          <button data-action="new">New Sprite...</button>
+          <button data-action="open">Open...</button>
+          <hr>
+          <button data-action="save-png">Export PNG</button>
+          <button data-action="save-spritesheet">Export Spritesheet</button>
+          <button data-action="save-gif">Export GIF</button>
+        </div>
+      </div>
+      <div class="menu-group" data-menu="edit">
+        <button class="menu-btn">Edit</button>
+        <div class="dropdown">
+          <button data-action="undo">Undo <span>Ctrl+Z</span></button>
+          <button data-action="redo">Redo <span>Ctrl+Y</span></button>
+          <hr>
+          <button data-action="clear-layer">Clear Layer</button>
+          <button data-action="flatten">Flatten Image</button>
+        </div>
+      </div>
+      <div class="menu-group" data-menu="view">
+        <button class="menu-btn">View</button>
+        <div class="dropdown">
+          <button data-action="toggle-grid">Toggle Grid <span>G</span></button>
+          <button data-action="zoom-fit">Fit to Window</button>
+          <button data-action="zoom-100">Zoom 100%</button>
+        </div>
+      </div>
+      <div class="menu-group" data-menu="sprite">
+        <button class="menu-btn">Sprite</button>
+        <div class="dropdown">
+          <button data-action="resize-canvas">Resize Canvas...</button>
+          <button data-action="flip-h">Flip Horizontal</button>
+          <button data-action="flip-v">Flip Vertical</button>
+          <button data-action="rotate-90">Rotate 90°</button>
+        </div>
+      </div>
+    </div>
+    <div class="menu-right">
+      <span id="canvas-info">32 × 32</span>
+      <button id="tab-editor" class="tab-btn active">Editor</button>
+      <button id="tab-model" class="tab-btn">3D → Sprite</button>
+    </div>
+  </div>
+
+  <!-- Main Editor Tab -->
+  <div id="editor-view" class="view active">
+    <!-- Left Tool Panel -->
+    <div id="toolpanel">
+      <div class="tool-group">
+        <button class="tool-btn active" data-tool="pencil" title="Pencil (P)">
+          <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="brush" title="Brush (B)">
+          <svg viewBox="0 0 24 24"><path d="M7 14c-1.66 0-3 1.34-3 3 0 1.31-1.16 2-2 2 .92 1.22 2.49 2 4 2 2.21 0 4-1.79 4-4 0-1.66-1.34-3-3-3zm13.71-9.37l-1.34-1.34c-.39-.39-1.02-.39-1.41 0L9 12.25 11.75 15l9.96-9.96c.39-.39.39-1.02 0-1.41z"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="eraser" title="Eraser (E)">
+          <svg viewBox="0 0 24 24"><path d="M15.14 3c-.51 0-1.02.2-1.41.59L2.59 14.73c-.78.77-.78 2.04 0 2.83L5.03 20H12l9-9-4.44-4.44L15.14 3zM5 18l-1.78-1.78L12 7.44 13.78 9 5 18z"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="fill" title="Fill / Bucket (F)">
+          <svg viewBox="0 0 24 24"><path d="M16.56 8.94L7.62 0 6.21 1.41l2.38 2.38-5.15 5.15c-.59.59-.59 1.54 0 2.12l5.5 5.5c.29.29.68.44 1.06.44s.77-.15 1.06-.44l5.5-5.5c.59-.58.59-1.53 0-2.12zM5.21 10L10 5.21 14.79 10H5.21zM19 11.5s-2 2.17-2 3.5c0 1.1.9 2 2 2s2-.9 2-2c0-1.33-2-3.5-2-3.5z"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="eyedropper" title="Eyedropper (I)">
+          <svg viewBox="0 0 24 24"><path d="M20.71 5.63l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-3.12 3.12-1.41-1.42-1.42 1.42 1.41 1.41L3 17.25V21h3.75l9.46-9.46 1.41 1.41 1.42-1.42-1.42-1.41 3.12-3.12c.4-.4.4-1.03.01-1.42l-.04.05zM6.25 19l-1.25-1.25L14.56 8.2l1.25 1.25L6.25 19z"/></svg>
+        </button>
+      </div>
+      <div class="tool-group">
+        <button class="tool-btn" data-tool="select-rect" title="Rectangle Select (M)">
+          <svg viewBox="0 0 24 24"><path d="M3 5v14h18V5H3zm16 12H5V7h14v10z" stroke="currentColor" stroke-width="0.5"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="select-lasso" title="Lasso Select (L)">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" stroke="currentColor" stroke-width="0.5" fill="none"/><path d="M12 6c-3.31 0-6 2.69-6 6"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="move" title="Move (V)">
+          <svg viewBox="0 0 24 24"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg>
+        </button>
+      </div>
+      <div class="tool-group">
+        <button class="tool-btn" data-tool="line" title="Line (N)">
+          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 14H7l10-10v10z"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="rect-shape" title="Rectangle (R)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+        </button>
+        <button class="tool-btn" data-tool="ellipse" title="Ellipse (O)">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+        </button>
+      </div>
+
+      <!-- Brush Size -->
+      <div class="tool-section">
+        <label>Size</label>
+        <input type="range" id="brush-size" min="1" max="32" value="1">
+        <span id="brush-size-val">1</span>
+      </div>
+
+      <!-- Color Swatches -->
+      <div class="color-swatches">
+        <div id="bg-color" title="Background color"></div>
+        <div id="fg-color" title="Foreground color"></div>
+        <button id="swap-colors" title="Swap colors">⇄</button>
+      </div>
+    </div>
+
+    <!-- Canvas Area -->
+    <div id="canvas-area">
+      <div id="canvas-container">
+        <canvas id="canvas-checkerboard"></canvas>
+        <canvas id="canvas-layers"></canvas>
+        <canvas id="canvas-overlay"></canvas>
+        <canvas id="canvas-grid"></canvas>
+      </div>
+    </div>
+
+    <!-- Right Panel -->
+    <div id="rightpanel">
+      <!-- Tabs -->
+      <div class="panel-tabs">
+        <button class="panel-tab active" data-panel="color">Color</button>
+        <button class="panel-tab" data-panel="layers">Layers</button>
+        <button class="panel-tab" data-panel="palette">Palette</button>
+      </div>
+
+      <!-- Color Panel -->
+      <div id="panel-color" class="panel-content active">
+        <canvas id="color-wheel" width="180" height="180"></canvas>
+        <div class="color-sliders">
+          <label>H <input type="range" id="hue-slider" min="0" max="360" value="0"></label>
+          <label>S <input type="range" id="sat-slider" min="0" max="100" value="100"></label>
+          <label>V <input type="range" id="val-slider" min="0" max="100" value="100"></label>
+          <label>A <input type="range" id="alpha-slider" min="0" max="255" value="255"></label>
+        </div>
+        <div class="hex-row">
+          <span>#</span><input type="text" id="hex-input" value="FF0000" maxlength="8">
+          <div id="color-preview"></div>
+        </div>
+      </div>
+
+      <!-- Layers Panel -->
+      <div id="panel-layers" class="panel-content">
+        <div class="panel-actions">
+          <button id="add-layer" title="Add Layer">+</button>
+          <button id="dup-layer" title="Duplicate Layer">⧉</button>
+          <button id="del-layer" title="Delete Layer">🗑</button>
+          <button id="merge-down" title="Merge Down">↓</button>
+        </div>
+        <div id="layers-list"></div>
+      </div>
+
+      <!-- Palette Panel -->
+      <div id="panel-palette" class="panel-content">
+        <div class="panel-actions">
+          <select id="palette-preset">
+            <option value="default">Default</option>
+            <option value="gameboy">Game Boy</option>
+            <option value="nes">NES</option>
+            <option value="cga">CGA</option>
+            <option value="pico8">PICO-8</option>
+            <option value="aap64">AAP-64</option>
+          </select>
+          <button id="add-palette-color" title="Add current color">+</button>
+        </div>
+        <div id="palette-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D Model Renderer Tab -->
+  <div id="model-view" class="view">
+    <div id="model-sidebar">
+      <h3>3D → Sprite Renderer</h3>
+
+      <div class="model-section">
+        <label>Load GLB Model</label>
+        <div id="model-drop-zone" class="drop-zone">
+          <div>Drop .glb / .gltf file here</div>
+          <div>or</div>
+          <button id="model-browse">Browse...</button>
+          <input type="file" id="model-file-input" accept=".glb,.gltf" style="display:none">
+        </div>
+      </div>
+
+      <div class="model-section">
+        <label>Sprite Size</label>
+        <div class="input-row">
+          <input type="number" id="sprite-w" value="64" min="8" max="512" step="8">
+          <span>×</span>
+          <input type="number" id="sprite-h" value="64" min="8" max="512" step="8">
+        </div>
+      </div>
+
+      <div class="model-section">
+        <label>Camera Preset</label>
+        <select id="camera-preset">
+          <option value="isometric">Isometric (RTS)</option>
+          <option value="top-down">Top Down</option>
+          <option value="side">Side View</option>
+          <option value="3quarter">3/4 View</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+
+      <div class="model-section" id="custom-camera-controls">
+        <label>Camera Elevation: <span id="elev-val">45</span>°</label>
+        <input type="range" id="camera-elev" min="0" max="90" value="45">
+        <label>Camera Distance: <span id="dist-val">3</span></label>
+        <input type="range" id="camera-dist" min="1" max="20" value="3">
+        <label>Zoom Factor: <span id="zoom-val">1.0</span></label>
+        <input type="range" id="camera-zoom" min="5" max="30" value="10">
+      </div>
+
+      <div class="model-section">
+        <label>Directions</label>
+        <div class="radio-group">
+          <label><input type="radio" name="dirs" value="4" checked> 4-way</label>
+          <label><input type="radio" name="dirs" value="8"> 8-way</label>
+          <label><input type="radio" name="dirs" value="1"> Single</label>
+        </div>
+      </div>
+
+      <div class="model-section">
+        <label>Frames per Direction</label>
+        <input type="number" id="frames-per-dir" value="1" min="1" max="64">
+        <small>For animations: rotate model over N frames</small>
+      </div>
+
+      <div class="model-section">
+        <label>Background</label>
+        <div class="radio-group">
+          <label><input type="radio" name="bg" value="transparent" checked> Transparent</label>
+          <label><input type="radio" name="bg" value="color"> Color</label>
+        </div>
+        <input type="color" id="render-bg-color" value="#00FF00">
+      </div>
+
+      <div class="model-section">
+        <label>Lighting</label>
+        <select id="lighting-preset">
+          <option value="standard">Standard</option>
+          <option value="soft">Soft</option>
+          <option value="hard">Hard/Dramatic</option>
+          <option value="flat">Flat/Unlit</option>
+        </select>
+      </div>
+
+      <div class="model-section">
+        <label>Animation Frame</label>
+        <input type="range" id="anim-frame-slider" min="0" max="100" value="0" disabled>
+        <div class="input-row">
+          <button id="anim-play-btn" disabled>▶ Play</button>
+          <span id="anim-frame-info">No animation</span>
+        </div>
+      </div>
+
+      <button id="render-sprites-btn" class="primary-btn" disabled>Render Sprites</button>
+      <button id="import-to-editor-btn" class="primary-btn" disabled>Import to Editor</button>
+    </div>
+
+    <div id="model-main">
+      <div id="model-preview-area">
+        <canvas id="model-preview-canvas"></canvas>
+        <div id="model-hint">Load a GLB/GLTF model to get started</div>
+      </div>
+
+      <div id="render-results">
+        <div id="render-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline (bottom, always visible in editor) -->
+  <div id="timeline">
+    <div id="timeline-controls">
+      <button id="tl-first" title="First Frame">⏮</button>
+      <button id="tl-prev" title="Previous Frame">◀</button>
+      <button id="tl-play" title="Play/Pause">▶</button>
+      <button id="tl-next" title="Next Frame">▶|</button>
+      <button id="tl-last" title="Last Frame">⏭</button>
+      <label>FPS <input type="number" id="tl-fps" value="12" min="1" max="60" style="width:45px"></label>
+      <label><input type="checkbox" id="tl-loop" checked> Loop</label>
+      <label><input type="checkbox" id="tl-onion"> Onion</label>
+    </div>
+    <div id="timeline-frames">
+      <div id="frames-track"></div>
+      <button id="tl-add-frame" title="Add Frame">+</button>
+      <button id="tl-dup-frame" title="Duplicate Frame">⧉</button>
+      <button id="tl-del-frame" title="Delete Frame">✕</button>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div id="modal-overlay" class="hidden">
+    <!-- New Sprite Modal -->
+    <div id="modal-new" class="modal hidden">
+      <h2>New Sprite</h2>
+      <div class="modal-body">
+        <label>Width <input type="number" id="new-width" value="32" min="1" max="4096"></label>
+        <label>Height <input type="number" id="new-height" value="32" min="1" max="4096"></label>
+        <div class="preset-sizes">
+          <span>Presets:</span>
+          <button data-w="16" data-h="16">16×16</button>
+          <button data-w="32" data-h="32">32×32</button>
+          <button data-w="48" data-h="48">48×48</button>
+          <button data-w="64" data-h="64">64×64</button>
+          <button data-w="128" data-h="128">128×128</button>
+          <button data-w="320" data-h="200">320×200</button>
+        </div>
+        <label>Background
+          <select id="new-bg">
+            <option value="transparent">Transparent</option>
+            <option value="white">White</option>
+            <option value="black">Black</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-new-cancel">Cancel</button>
+        <button id="modal-new-ok" class="primary-btn">Create</button>
+      </div>
+    </div>
+
+    <!-- Resize Canvas Modal -->
+    <div id="modal-resize" class="modal hidden">
+      <h2>Resize Canvas</h2>
+      <div class="modal-body">
+        <label>Width <input type="number" id="resize-width" value="32" min="1" max="4096"></label>
+        <label>Height <input type="number" id="resize-height" value="32" min="1" max="4096"></label>
+        <label>Anchor
+          <select id="resize-anchor">
+            <option value="top-left">Top Left</option>
+            <option value="center">Center</option>
+            <option value="top-right">Top Right</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-resize-cancel">Cancel</button>
+        <button id="modal-resize-ok" class="primary-btn">Resize</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for open -->
+  <input type="file" id="open-file-input" accept=".png,.jpg,.jpeg,.gif" style="display:none">
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/history.js"></script>
+  <script src="js/color.js"></script>
+  <script src="js/palette.js"></script>
+  <script src="js/layers.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/tools.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/model3d.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
