@@ -210,13 +210,16 @@
 
       <div class="model-section">
         <label>Camera Preset</label>
-        <select id="camera-preset">
+        <div class="input-row">
+          <select id="camera-preset" style="flex:1">
           <option value="isometric">Isometric (RTS)</option>
           <option value="top-down">Top Down</option>
           <option value="side">Side View</option>
           <option value="3quarter">3/4 View</option>
           <option value="custom">Custom</option>
-        </select>
+          </select>
+          <button id="reset-view-btn" title="Reset camera to preset">↺</button>
+        </div>
       </div>
 
       <div class="model-section" id="custom-camera-controls">
@@ -279,6 +282,7 @@
       <div id="model-preview-area">
         <canvas id="model-preview-canvas"></canvas>
         <div id="model-hint">Load a GLB/GLTF model to get started</div>
+        <div id="orbit-hint">Drag to rotate · Pinch/scroll to zoom · Two-finger pan</div>
         <div id="model-loading">
           <div class="spinner"></div>
           <span>Loading model…</span>
@@ -370,6 +374,7 @@
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/history.js"></script>
   <script src="js/color.js"></script>

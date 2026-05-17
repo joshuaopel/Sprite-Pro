@@ -468,7 +468,24 @@ small { font-size: 10px; color: var(--text-dim); }
   background: var(--bg0); overflow: hidden;
   display: flex; align-items: center; justify-content: center;
 }
-#model-preview-canvas { max-width: 100%; max-height: 100%; }
+#model-preview-canvas { max-width: 100%; max-height: 100%; display: block; }
+
+#orbit-hint {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.5); color: var(--text-dim);
+  font-size: 10px; padding: 3px 10px; border-radius: 10px;
+  pointer-events: none; white-space: nowrap;
+  opacity: 0; transition: opacity 0.3s;
+}
+#model-preview-area:hover #orbit-hint,
+#model-preview-area:focus-within #orbit-hint { opacity: 1; }
+
+#reset-view-btn {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 3px 8px; font-size: 14px;
+  flex-shrink: 0; transition: background 0.1s;
+}
+#reset-view-btn:hover { background: var(--border); }
 #model-hint {
   position: absolute; color: var(--text-dim); font-size: 14px; pointer-events: none;
 }

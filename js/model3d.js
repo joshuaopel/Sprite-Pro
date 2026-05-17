@@ -2,7 +2,8 @@
 class Model3DRenderer {
   constructor() {
     this.scene = null;
-    this.camera = null;
+    this.camera = null;   // perspective, used for interactive preview
+    this.controls = null; // OrbitControls
     this.renderer = null;
     this.model = null;
     this.mixer = null;
@@ -33,9 +34,9 @@ class Model3DRenderer {
     this.scene = new THREE.Scene();
     this.clock = new THREE.Clock();
 
-    // Camera
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 1000);
-    this._applyCamera('isometric');
+    // Perspective camera for interactive preview
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+    this._setCameraToPreset('isometric');
 
     // Renderer
     this.renderer = new THREE.WebGLRenderer({
@@ -44,10 +45,21 @@ class Model3DRenderer {
       alpha: true,
       preserveDrawingBuffer: true
     });
-    this.renderer.setPixelRatio(1);
+    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this._resizeRenderer();
+
+    // OrbitControls — mouse drag / touch rotate, pinch zoom, two-finger pan
+    if (typeof THREE.OrbitControls !== 'undefined') {
+      this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+      this.controls.enableDamping = true;
+      this.controls.dampingFactor = 0.08;
+      this.controls.target.set(0, 0.5, 0);
+      this.controls.minDistance = 1;
+      this.controls.maxDistance = 30;
+      this.controls.update();
+    }
 
     // Lighting
     this._applyLighting('standard');
@@ -61,40 +73,51 @@ class Model3DRenderer {
     const w = area.clientWidth || 600;
     const h = area.clientHeight || 400;
     this.renderer.setSize(w, h);
-    this.previewCanvas.style.width = w+'px';
-    this.previewCanvas.style.height = h+'px';
+    if (this.camera && this.camera.isPerspectiveCamera) {
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.controls) this.controls.update();
   }
 
-  _applyCamera(preset) {
+  // Returns {elevation, azimuth, distance} for a named preset
+  _presetAngles(preset) {
     const elev = +document.getElementById('camera-elev').value;
     const dist = +document.getElementById('camera-dist').value;
-    const zoomF = +document.getElementById('camera-zoom').value / 10;
-
-    let elevation, azimuth;
     switch(preset) {
-      case 'isometric':   elevation = 35.264; azimuth = 45; break;
-      case 'top-down':    elevation = 90;     azimuth = 0;  break;
-      case 'side':        elevation = 0;      azimuth = 90; break;
-      case '3quarter':    elevation = 30;     azimuth = 30; break;
-      case 'custom':      elevation = elev;   azimuth = 0;  break;
-      default:            elevation = 35.264; azimuth = 45;
+      case 'isometric': return { elevation: 35.264, azimuth: 45,  distance: 5 };
+      case 'top-down':  return { elevation: 80,     azimuth: 0,   distance: 5 };
+      case 'side':      return { elevation: 5,      azimuth: 90,  distance: 5 };
+      case '3quarter':  return { elevation: 30,     azimuth: 30,  distance: 5 };
+      case 'custom':    return { elevation: elev,   azimuth: 0,   distance: dist };
+      default:          return { elevation: 35.264, azimuth: 45,  distance: 5 };
     }
+  }
+
+  // Move perspective camera to preset position and sync OrbitControls
+  _setCameraToPreset(preset) {
+    if (!this.camera) return;
+    const { elevation, azimuth, distance } = this._presetAngles(preset || 'isometric');
     const elevRad = elevation * Math.PI / 180;
-    const azRad = azimuth * Math.PI / 180;
-    const d = (preset === 'custom' ? dist : 5);
+    const azRad   = azimuth   * Math.PI / 180;
+    const target = new THREE.Vector3(0, 0.5, 0);
 
     this.camera.position.set(
-      d * Math.cos(elevRad) * Math.sin(azRad),
-      d * Math.sin(elevRad),
-      d * Math.cos(elevRad) * Math.cos(azRad)
+      target.x + distance * Math.cos(elevRad) * Math.sin(azRad),
+      target.y + distance * Math.sin(elevRad),
+      target.z + distance * Math.cos(elevRad) * Math.cos(azRad)
     );
-    this.camera.lookAt(0, 0.5, 0);
-
-    const s = (preset === 'custom' ? zoomF : 1.5);
-    this.camera.left = -s; this.camera.right = s;
-    this.camera.top = s;   this.camera.bottom = -s;
+    this.camera.lookAt(target);
     this.camera.updateProjectionMatrix();
+
+    if (this.controls) {
+      this.controls.target.copy(target);
+      this.controls.update();
+    }
   }
+
+  // Legacy alias used elsewhere
+  _applyCamera(preset) { this._setCameraToPreset(preset); }
 
   _applyLighting(preset) {
     // Remove existing lights
@@ -134,9 +157,9 @@ class Model3DRenderer {
   _previewLoop() {
     const loop = () => {
       this._rafId = requestAnimationFrame(loop);
-      if (this.mixer) {
-        this.mixer.update(this.clock.getDelta());
-      }
+      const delta = this.clock.getDelta();
+      if (this.mixer) this.mixer.update(delta);
+      if (this.controls) this.controls.update();
       if (this.renderer && this.scene && this.camera) {
         this.renderer.render(this.scene, this.camera);
       }
@@ -270,22 +293,13 @@ class Model3DRenderer {
     offRenderer.setSize(w, h, false);
     offRenderer.setPixelRatio(1);
 
-    // Setup offscreen camera
-    const s = 1.5;
-    const offCamera = new THREE.OrthographicCamera(-s, s, s, -s, 0.01, 1000);
-
+    // Setup offscreen orthographic camera (independent of preview camera)
     const cameraPreset = document.getElementById('camera-preset').value;
-    let baseElev;
-    switch(cameraPreset) {
-      case 'isometric': baseElev = 35.264; break;
-      case 'top-down':  baseElev = 80;     break;
-      case 'side':      baseElev = 10;     break;
-      case '3quarter':  baseElev = 30;     break;
-      case 'custom':    baseElev = +document.getElementById('camera-elev').value; break;
-      default:          baseElev = 35.264;
-    }
+    const { elevation: baseElev, distance: d } = this._presetAngles(cameraPreset);
     const elevRad = baseElev * Math.PI / 180;
-    const d = 5;
+    const aspect = w / h;
+    const s = 1.5;
+    const offCamera = new THREE.OrthographicCamera(-s * aspect, s * aspect, s, -s, 0.01, 1000);
 
     // Apply lighting to scene
     this._applyLighting(document.getElementById('lighting-preset').value);
@@ -424,7 +438,7 @@ class Model3DRenderer {
 
   _setCameraFromUI() {
     const preset = document.getElementById('camera-preset').value;
-    this._applyCamera(preset);
+    this._setCameraToPreset(preset);
   }
 
   _bindUI() {
@@ -460,6 +474,11 @@ class Model3DRenderer {
       this._setCameraFromUI();
     });
     document.getElementById('custom-camera-controls').style.display = 'none';
+
+    // Reset view button
+    document.getElementById('reset-view-btn').addEventListener('click', () => {
+      this._setCameraFromUI();
+    });
 
     // Custom camera sliders
     ['camera-elev','camera-dist','camera-zoom'].forEach(id => {
