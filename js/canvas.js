@@ -120,7 +120,6 @@ class CanvasEngine {
     }
     this.layerMgr.composite(ctx, fi);
     this.renderOverlay();
-    document.getElementById('canvas-info').textContent = `${this.W} × ${this.H}`;
   }
 
   renderOverlay() {
