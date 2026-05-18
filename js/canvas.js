@@ -119,20 +119,38 @@ class CanvasEngine {
     document.getElementById('zoom-indicator').textContent = this.zoom + 'x';
   }
 
+  _drawOnionFrame(ctx, frameIdx, tintColor, alpha) {
+    const tmp = document.createElement('canvas');
+    tmp.width = this.W; tmp.height = this.H;
+    const tc = tmp.getContext('2d');
+    this.layerMgr.composite(tc, frameIdx);
+    // Tint non-transparent pixels with the specified color
+    tc.globalCompositeOperation = 'source-atop';
+    tc.fillStyle = tintColor;
+    tc.fillRect(0, 0, this.W, this.H);
+    tc.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(tmp, 0, 0);
+    ctx.globalAlpha = 1;
+  }
+
   render() {
     const ctx = this.layersCanvas.getContext('2d');
     const fi = this.timeline.currentFrame;
-    if (this.timeline.onionSkin && fi > 0) {
-      ctx.clearRect(0, 0, this.W, this.H);
-      this.layerMgr.layers.forEach(l => {
-        if (!l.visible) return;
-        const tmp = document.createElement('canvas');
-        tmp.width = this.W; tmp.height = this.H;
-        tmp.getContext('2d').putImageData(l.frames[fi - 1], 0, 0);
-        ctx.globalAlpha = 0.25;
-        ctx.drawImage(tmp, 0, 0);
-      });
-      ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, this.W, this.H);
+    if (this.timeline.onionSkin) {
+      const depth = this.timeline.onionDepth || 1;
+      const fc = this.layerMgr.frameCount;
+      // Previous frames: blue tint, fading with distance
+      for (let d = Math.min(depth, fi); d >= 1; d--) {
+        const alpha = 0.3 / d;
+        this._drawOnionFrame(ctx, fi - d, 'rgba(80,140,255,0.6)', alpha);
+      }
+      // Next frames: orange tint, fading with distance
+      for (let d = 1; d <= depth && fi + d < fc; d++) {
+        const alpha = 0.3 / d;
+        this._drawOnionFrame(ctx, fi + d, 'rgba(255,140,60,0.6)', alpha);
+      }
     }
     this.layerMgr.composite(ctx, fi);
     this.renderOverlay();

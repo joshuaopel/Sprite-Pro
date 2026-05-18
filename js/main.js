@@ -113,6 +113,8 @@
       if (toolEng.selection) { e.preventDefault(); deleteSelection(); return; }
     }
     if (e.key === 'Escape') { clearSelection(); return; }
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); timeline.goTo(timeline.currentFrame - 1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); timeline.goTo(timeline.currentFrame + 1); return; }
 
     switch (e.key.toLowerCase()) {
       case 'p': activateTool('pencil'); break;

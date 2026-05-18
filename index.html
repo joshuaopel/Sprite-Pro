@@ -255,6 +255,26 @@
         </div>
       </div>
 
+      <!-- Single-direction angle controls (shown when Single is selected) -->
+      <div class="model-section" id="single-dir-controls" style="display:none">
+        <label>Capture Mode</label>
+        <div class="radio-group" style="flex-direction:column;gap:6px">
+          <label><input type="radio" name="capmode" value="view" checked> Match current view</label>
+          <label><input type="radio" name="capmode" value="custom"> Custom angles</label>
+        </div>
+        <div id="single-custom-angles" style="display:none;flex-direction:column;gap:6px;margin-top:6px">
+          <label>Azimuth: <span id="cap-az-val">0</span>°
+            <input type="range" id="cap-azimuth" min="0" max="359" value="0">
+          </label>
+          <label>Elevation: <span id="cap-elev-val">35</span>°
+            <input type="range" id="cap-elevation" min="-10" max="90" value="35">
+          </label>
+        </div>
+        <button id="copy-view-btn" style="margin-top:6px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px">
+          Copy current view → angles
+        </button>
+      </div>
+
       <div class="model-section">
         <label>Frames per Direction</label>
         <input type="number" id="frames-per-dir" value="1" min="1" max="64">
@@ -322,6 +342,8 @@
       <label>FPS <input type="number" id="tl-fps" value="12" min="1" max="60" style="width:45px"></label>
       <label><input type="checkbox" id="tl-loop" checked> Loop</label>
       <label><input type="checkbox" id="tl-onion"> Onion</label>
+      <label>Depth <input type="number" id="tl-onion-depth" value="1" min="1" max="5" style="width:35px"></label>
+      <span id="tl-frame-count" style="font-size:11px;color:var(--fg2);min-width:36px;text-align:center">1/1</span>
     </div>
     <div id="timeline-frames">
       <div id="frames-track"></div>

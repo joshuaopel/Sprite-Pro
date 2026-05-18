@@ -154,6 +154,21 @@ class Model3DRenderer {
     }
   }
 
+  getCameraAzimuth() {
+    if (!this.camera) return 0;
+    const target = this.controls ? this.controls.target.clone() : new THREE.Vector3(0, 0.5, 0);
+    const pos = this.camera.position.clone().sub(target);
+    return Math.atan2(pos.x, pos.z) * 180 / Math.PI;
+  }
+
+  getCameraElevation() {
+    if (!this.camera) return 35;
+    const target = this.controls ? this.controls.target.clone() : new THREE.Vector3(0, 0.5, 0);
+    const pos = this.camera.position.clone().sub(target);
+    const dist = pos.length();
+    return Math.asin(Math.max(-1, Math.min(1, pos.y / (dist || 1)))) * 180 / Math.PI;
+  }
+
   _previewLoop() {
     const loop = () => {
       this._rafId = requestAnimationFrame(loop);
@@ -268,11 +283,23 @@ class Model3DRenderer {
     const bgMode = document.querySelector('input[name="bg"]:checked').value;
     const bgColor = document.getElementById('render-bg-color').value;
 
+    let overrideElev = null, overrideDist = null;
     const dirAngles = dirs === 8
       ? [0, 45, 90, 135, 180, 225, 270, 315]
       : dirs === 4
       ? [0, 90, 180, 270]
-      : [0];
+      : (() => {
+          const capmode = (document.querySelector('input[name="capmode"]:checked') || {}).value || 'view';
+          if (capmode === 'view') {
+            overrideElev = this.getCameraElevation();
+            const tgt = this.controls ? this.controls.target : new THREE.Vector3(0, 0.5, 0);
+            overrideDist = this.camera.position.distanceTo(tgt);
+            return [this.getCameraAzimuth()];
+          } else {
+            overrideElev = +document.getElementById('cap-elevation').value;
+            return [+document.getElementById('cap-azimuth').value];
+          }
+        })();
 
     const dirNames = {
       1: ['S'],
@@ -295,8 +322,10 @@ class Model3DRenderer {
 
     // Setup offscreen orthographic camera (independent of preview camera)
     const cameraPreset = document.getElementById('camera-preset').value;
-    const { elevation: baseElev, distance: d } = this._presetAngles(cameraPreset);
-    const elevRad = baseElev * Math.PI / 180;
+    const { elevation: baseElev, distance: baseD } = this._presetAngles(cameraPreset);
+    const elevation = overrideElev !== null ? overrideElev : baseElev;
+    const d = overrideDist !== null ? overrideDist : baseD;
+    const elevRad = elevation * Math.PI / 180;
     const aspect = w / h;
     const s = 1.5;
     const offCamera = new THREE.OrthographicCamera(-s * aspect, s * aspect, s, -s, 0.01, 1000);
@@ -493,6 +522,43 @@ class Model3DRenderer {
     // Lighting
     document.getElementById('lighting-preset').addEventListener('change', () => {
       this._applyLighting(document.getElementById('lighting-preset').value);
+    });
+
+    // Single direction controls: show/hide based on dirs selection
+    document.querySelectorAll('input[name="dirs"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.getElementById('single-dir-controls').style.display =
+          radio.value === '1' && radio.checked ? '' : 'none';
+      });
+    });
+
+    // Capture mode radios: show/hide custom angle sliders
+    document.querySelectorAll('input[name="capmode"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.getElementById('single-custom-angles').style.display =
+          radio.value === 'custom' && radio.checked ? 'flex' : 'none';
+      });
+    });
+
+    // Custom angle sliders: update value displays
+    document.getElementById('cap-azimuth').addEventListener('input', e => {
+      document.getElementById('cap-az-val').textContent = e.target.value;
+    });
+    document.getElementById('cap-elevation').addEventListener('input', e => {
+      document.getElementById('cap-elev-val').textContent = e.target.value;
+    });
+
+    // Copy current view → angle sliders
+    document.getElementById('copy-view-btn').addEventListener('click', () => {
+      const az = Math.round(((this.getCameraAzimuth() % 360) + 360) % 360);
+      const el = Math.round(this.getCameraElevation());
+      document.getElementById('cap-azimuth').value = az;
+      document.getElementById('cap-az-val').textContent = az;
+      document.getElementById('cap-elevation').value = el;
+      document.getElementById('cap-elev-val').textContent = el;
+      // Switch to custom mode
+      const customRadio = document.querySelector('input[name="capmode"][value="custom"]');
+      if (customRadio) { customRadio.checked = true; customRadio.dispatchEvent(new Event('change')); }
     });
 
     // Render button

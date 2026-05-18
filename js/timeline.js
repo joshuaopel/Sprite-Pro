@@ -7,6 +7,7 @@ class Timeline {
     this.loop = true;
     this.playing = false;
     this.onionSkin = false;
+    this.onionDepth = 1;
     this.frameDurations = [100]; // ms per frame
     this._rafId = null;
     this._lastTime = 0;
@@ -90,6 +91,10 @@ class Timeline {
   }
 
   render() {
+    // Update frame counter
+    const counter = document.getElementById('tl-frame-count');
+    if (counter) counter.textContent = `${this.currentFrame + 1}/${this.frameCount}`;
+
     this.track.innerHTML = '';
     for (let i = 0; i < this.frameCount; i++) {
       const thumb = document.createElement('div');
@@ -122,6 +127,10 @@ class Timeline {
 
       this.track.appendChild(thumb);
     }
+
+    // Scroll active thumb into view
+    const active = this.track.querySelector('.frame-thumb.active');
+    if (active) active.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
   }
 
   _bind() {
@@ -147,5 +156,12 @@ class Timeline {
       this.onionSkin = e.target.checked;
       this._onChange();
     });
+    const depthEl = document.getElementById('tl-onion-depth');
+    if (depthEl) {
+      depthEl.addEventListener('input', e => {
+        this.onionDepth = clamp(+e.target.value, 1, 5);
+        if (this.onionSkin) this._onChange();
+      });
+    }
   }
 }
