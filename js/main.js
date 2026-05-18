@@ -106,6 +106,13 @@
     if (ctrl && e.key === 'z') { e.preventDefault(); applyUndo(); return; }
     if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); applyRedo(); return; }
     if (ctrl && e.key === 's') { e.preventDefault(); exporter.exportPng(); return; }
+    if (ctrl && e.key === 'c') { e.preventDefault(); copySelection(); return; }
+    if (ctrl && e.key === 'x') { e.preventDefault(); copySelection(); deleteSelection(); return; }
+    if (ctrl && e.key === 'v') { e.preventDefault(); pasteSelection(); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (toolEng.selection) { e.preventDefault(); deleteSelection(); return; }
+    }
+    if (e.key === 'Escape') { clearSelection(); return; }
 
     switch (e.key.toLowerCase()) {
       case 'p': activateTool('pencil'); break;
@@ -159,6 +166,80 @@
     }));
     layerMgr.activeIdx = Math.min(layerMgr.activeIdx, layerMgr.layers.length-1);
     layerMgr.renderUI();
+    canvasEng.render();
+    canvasEng.renderThumbs();
+  }
+
+  // ===== SELECTION ACTIONS =====
+  let _clipboard = null; // { imageData, w, h }
+
+  function clearSelection() {
+    toolEng.selection = null;
+    toolEng._lassoPath = [];
+    canvasEng.stopMarch();
+    canvasEng.render();
+  }
+
+  function deleteSelection() {
+    if (!toolEng.selection) return;
+    const fi = timeline.currentFrame;
+    const layer = layerMgr.getActiveFrame(fi);
+    const { x, y, w, h } = toolEng.selection;
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        const px = x + dx, py = y + dy;
+        if (px < 0 || py < 0 || px >= layerMgr.width || py >= layerMgr.height) continue;
+        const i = (py * layerMgr.width + px) * 4;
+        layer.data[i] = layer.data[i+1] = layer.data[i+2] = layer.data[i+3] = 0;
+      }
+    }
+    history.push(layerMgr.layers);
+    canvasEng.render();
+    canvasEng.renderThumbs();
+  }
+
+  function copySelection() {
+    if (!toolEng.selection) return;
+    const fi = timeline.currentFrame;
+    const layer = layerMgr.getActiveFrame(fi);
+    const { x, y, w, h } = toolEng.selection;
+    const copy = new ImageData(w, h);
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        const px = x + dx, py = y + dy;
+        if (px < 0 || py < 0 || px >= layerMgr.width || py >= layerMgr.height) continue;
+        const si = (py * layerMgr.width + px) * 4;
+        const di = (dy * w + dx) * 4;
+        copy.data[di]   = layer.data[si];
+        copy.data[di+1] = layer.data[si+1];
+        copy.data[di+2] = layer.data[si+2];
+        copy.data[di+3] = layer.data[si+3];
+      }
+    }
+    _clipboard = { imageData: copy, w, h };
+  }
+
+  function pasteSelection() {
+    if (!_clipboard) return;
+    const fi = timeline.currentFrame;
+    const layer = layerMgr.getActiveFrame(fi);
+    const { imageData, w, h } = _clipboard;
+    // Paste at top-left of current selection, or (0,0)
+    const ox = toolEng.selection ? toolEng.selection.x : 0;
+    const oy = toolEng.selection ? toolEng.selection.y : 0;
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        const px = ox + dx, py = oy + dy;
+        if (px < 0 || py < 0 || px >= layerMgr.width || py >= layerMgr.height) continue;
+        const si = (dy * w + dx) * 4;
+        const di = (py * layerMgr.width + px) * 4;
+        layer.data[di]   = imageData.data[si];
+        layer.data[di+1] = imageData.data[si+1];
+        layer.data[di+2] = imageData.data[si+2];
+        layer.data[di+3] = imageData.data[si+3];
+      }
+    }
+    history.push(layerMgr.layers);
     canvasEng.render();
     canvasEng.renderThumbs();
   }

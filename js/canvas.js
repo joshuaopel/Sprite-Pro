@@ -9,6 +9,8 @@ class CanvasEngine {
     this._panning = false;
     this._panStart = null;
     this._onPaint = null;
+    this._marchOffset = 0;
+    this._marchRAF = null;
 
     this.area = document.getElementById('canvas-area');
     this.container = document.getElementById('canvas-container');
@@ -35,15 +37,23 @@ class CanvasEngine {
   }
 
   _initCanvases() {
-    const w = this.W, h = this.H;
-    const z = this.zoom;
-    const pw = w*z, ph = h*z;
-    [this.checker, this.layersCanvas, this.overlayCanvas, this.gridCanvas].forEach(c => {
+    const w = this.W, h = this.H, z = this.zoom;
+    const pw = w * z, ph = h * z;
+
+    // Pixel-art canvases: sprite resolution, CSS-scaled with nearest-neighbour
+    [this.checker, this.layersCanvas].forEach(c => {
       c.width = w; c.height = h;
-      c.style.width = pw+'px'; c.style.height = ph+'px';
+      c.style.width = pw + 'px'; c.style.height = ph + 'px';
     });
-    this.container.style.width = pw+'px';
-    this.container.style.height = ph+'px';
+
+    // Vector overlay canvases: screen resolution, no nearest-neighbour scaling
+    [this.overlayCanvas, this.gridCanvas].forEach(c => {
+      c.width = pw; c.height = ph;
+      c.style.width = pw + 'px'; c.style.height = ph + 'px';
+    });
+
+    this.container.style.width = pw + 'px';
+    this.container.style.height = ph + 'px';
     this.container.style.position = 'relative';
     this._drawChecker();
     this._drawGrid();
@@ -64,10 +74,9 @@ class CanvasEngine {
 
   _drawChecker() {
     const ctx = this.checker.getContext('2d');
-    const w = this.W, h = this.H;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        ctx.fillStyle = ((x+y)%2===0) ? '#666' : '#555';
+    for (let y = 0; y < this.H; y++) {
+      for (let x = 0; x < this.W; x++) {
+        ctx.fillStyle = ((x + y) % 2 === 0) ? '#666' : '#555';
         ctx.fillRect(x, y, 1, 1);
       }
     }
@@ -75,46 +84,53 @@ class CanvasEngine {
 
   _drawGrid() {
     const ctx = this.gridCanvas.getContext('2d');
-    ctx.clearRect(0,0,this.W,this.H);
+    const pw = this.W * this.zoom, ph = this.H * this.zoom;
+    ctx.clearRect(0, 0, pw, ph);
     if (!this.showGrid || this.zoom < 4) return;
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = 1/this.zoom;
-    // Draw at pixel boundaries
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1;
     for (let x = 0; x <= this.W; x++) {
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,this.H); ctx.stroke();
+      const sx = x * this.zoom + 0.5;
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, ph); ctx.stroke();
     }
     for (let y = 0; y <= this.H; y++) {
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(this.W,y); ctx.stroke();
+      const sy = y * this.zoom + 0.5;
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(pw, sy); ctx.stroke();
     }
   }
 
   setZoom(z) {
     this.zoom = clamp(z, 1, 64);
-    const pw = this.W*this.zoom, ph = this.H*this.zoom;
-    [this.checker, this.layersCanvas, this.overlayCanvas, this.gridCanvas].forEach(c => {
-      c.style.width = pw+'px'; c.style.height = ph+'px';
+    const pw = this.W * this.zoom, ph = this.H * this.zoom;
+
+    [this.checker, this.layersCanvas].forEach(c => {
+      c.style.width = pw + 'px'; c.style.height = ph + 'px';
     });
-    this.container.style.width = pw+'px';
-    this.container.style.height = ph+'px';
+    // Overlay/grid need their pixel dimensions updated too
+    [this.overlayCanvas, this.gridCanvas].forEach(c => {
+      c.width = pw; c.height = ph;
+      c.style.width = pw + 'px'; c.style.height = ph + 'px';
+    });
+
+    this.container.style.width = pw + 'px';
+    this.container.style.height = ph + 'px';
     this._drawGrid();
     this.render();
-    document.getElementById('zoom-indicator').textContent = this.zoom+'x';
+    document.getElementById('zoom-indicator').textContent = this.zoom + 'x';
   }
 
   render() {
     const ctx = this.layersCanvas.getContext('2d');
     const fi = this.timeline.currentFrame;
-    // Onion skin (previous frame, translucent)
     if (this.timeline.onionSkin && fi > 0) {
-      ctx.clearRect(0,0,this.W,this.H);
-      const prev = fi - 1;
+      ctx.clearRect(0, 0, this.W, this.H);
       this.layerMgr.layers.forEach(l => {
         if (!l.visible) return;
         const tmp = document.createElement('canvas');
         tmp.width = this.W; tmp.height = this.H;
-        tmp.getContext('2d').putImageData(l.frames[prev],0,0);
+        tmp.getContext('2d').putImageData(l.frames[fi - 1], 0, 0);
         ctx.globalAlpha = 0.25;
-        ctx.drawImage(tmp,0,0);
+        ctx.drawImage(tmp, 0, 0);
       });
       ctx.globalAlpha = 1;
     }
@@ -122,47 +138,86 @@ class CanvasEngine {
     this.renderOverlay();
   }
 
+  // ── Overlay (drawn in screen pixels) ──────────────────────────────────────
   renderOverlay() {
     const ctx = this.overlayCanvas.getContext('2d');
-    ctx.clearRect(0,0,this.W,this.H);
-    // Draw selection rectangle
-    if (this._toolEngine && this._toolEngine.selection) {
-      const { x, y, w, h } = this._toolEngine.selection;
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.lineWidth = 1/this.zoom;
-      ctx.setLineDash([2/this.zoom, 2/this.zoom]);
-      ctx.strokeRect(x, y, w, h);
-      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-      ctx.setLineDash([2/this.zoom, 2/this.zoom]);
-      ctx.lineDashOffset = 2/this.zoom;
-      ctx.strokeRect(x, y, w, h);
+    const z = this.zoom;
+    const pw = this.W * z, ph = this.H * z;
+    ctx.clearRect(0, 0, pw, ph);
+
+    const te = this._toolEngine;
+
+    // Selection rectangle — marching ants
+    if (te && te.selection) {
+      const { x, y, w, h } = te.selection;
+      const sx = x * z, sy = y * z, sw = w * z, sh = h * z;
+      const off = this._marchOffset;
+
+      ctx.lineWidth = 1.5;
+      // White layer
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -off;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, sw, sh);
+      // Black layer offset by half a dash cycle
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineDashOffset = -off + 5;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, sw, sh);
       ctx.setLineDash([]);
       ctx.lineDashOffset = 0;
     }
-    // Draw lasso path
-    if (this._toolEngine && this._toolEngine._lassoPath.length > 1) {
+
+    // Lasso path
+    if (te && te._lassoPath.length > 1) {
       ctx.beginPath();
-      this._toolEngine._lassoPath.forEach(([px,py],i) => i===0?ctx.moveTo(px+0.5,py+0.5):ctx.lineTo(px+0.5,py+0.5));
+      te._lassoPath.forEach(([px, py], i) => {
+        i === 0 ? ctx.moveTo((px + 0.5) * z, (py + 0.5) * z)
+                : ctx.lineTo((px + 0.5) * z, (py + 0.5) * z);
+      });
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.lineWidth = 1/this.zoom;
-      ctx.setLineDash([2/this.zoom,2/this.zoom]);
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -this._marchOffset;
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
     }
   }
 
   renderCursor(x, y, brushSize) {
     const ctx = this.overlayCanvas.getContext('2d');
-    ctx.clearRect(0,0,this.W,this.H);
+    const z = this.zoom;
+    ctx.clearRect(0, 0, this.W * z, this.H * z);
     this.renderOverlay();
     if (brushSize > 1) {
-      const half = Math.floor(brushSize/2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-      ctx.lineWidth = 1/this.zoom;
+      const half = Math.floor(brushSize / 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(x+0.5, y+0.5, half, 0, Math.PI*2);
+      ctx.arc((x + 0.5) * z, (y + 0.5) * z, half * z, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.arc((x + 0.5) * z, (y + 0.5) * z, half * z, 0, Math.PI * 2);
       ctx.stroke();
     }
+  }
+
+  // Start/stop marching ants animation
+  startMarch() {
+    if (this._marchRAF) return;
+    const tick = () => {
+      this._marchOffset = (this._marchOffset + 0.4) % 10;
+      this.renderOverlay();
+      this._marchRAF = requestAnimationFrame(tick);
+    };
+    this._marchRAF = requestAnimationFrame(tick);
+  }
+
+  stopMarch() {
+    if (this._marchRAF) { cancelAnimationFrame(this._marchRAF); this._marchRAF = null; }
+    this._marchOffset = 0;
   }
 
   renderThumbs() {
@@ -170,28 +225,25 @@ class CanvasEngine {
     this.timeline.render();
   }
 
-  // Get canvas-pixel coords from event
   getPixelPos(e) {
     const rect = this.layersCanvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return {
-      x: clamp(Math.floor((clientX - rect.left) / this.zoom), 0, this.W-1),
-      y: clamp(Math.floor((clientY - rect.top) / this.zoom), 0, this.H-1)
+      x: clamp(Math.floor((clientX - rect.left) / this.zoom), 0, this.W - 1),
+      y: clamp(Math.floor((clientY - rect.top) / this.zoom), 0, this.H - 1)
     };
   }
 
   _bind() {
     const area = this.area;
 
-    // Mouse wheel: zoom
     area.addEventListener('wheel', e => {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 1 : -1;
-      this.setZoom(this.zoom + delta * Math.max(1, Math.floor(this.zoom/4)));
+      this.setZoom(this.zoom + delta * Math.max(1, Math.floor(this.zoom / 4)));
     }, { passive: false });
 
-    // Pan with Space+drag or middle mouse
     area.addEventListener('mousedown', e => {
       if (e.button === 1 || (e.button === 0 && e.altKey)) {
         this._panning = true;
@@ -213,10 +265,9 @@ class CanvasEngine {
       }
     });
 
-    // Zoom indicator
     const zi = document.createElement('div');
     zi.id = 'zoom-indicator';
-    zi.textContent = this.zoom+'x';
+    zi.textContent = this.zoom + 'x';
     area.appendChild(zi);
   }
 

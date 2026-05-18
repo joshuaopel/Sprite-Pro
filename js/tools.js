@@ -24,10 +24,14 @@ class ToolEngine {
         btn.classList.add('active');
         this.currentTool = btn.dataset.tool;
         document.getElementById('canvas-area').dataset.tool = this.currentTool;
-        if (this.currentTool !== 'select-rect' && this.currentTool !== 'select-lasso') {
-          this.selection = null;
-        }
+        const isSelect = this.currentTool === 'select-rect' || this.currentTool === 'select-lasso';
+        if (!isSelect) { this.selection = null; this.canvas.stopMarch(); }
         this._lassoPath = [];
+        // Show/hide context panels
+        document.getElementById('corner-radius-section').style.display =
+          this.currentTool === 'rect-shape' ? '' : 'none';
+        document.getElementById('selection-actions').style.display =
+          isSelect ? '' : 'none';
         this.canvas.render();
       });
     });
@@ -37,6 +41,16 @@ class ToolEngine {
     brushSz.addEventListener('input', () => {
       this.brushSize = +brushSz.value;
       brushVal.textContent = this.brushSize;
+    });
+
+    const radSz = document.getElementById('corner-radius');
+    const radVal = document.getElementById('corner-radius-val');
+    radSz.addEventListener('input', () => { radVal.textContent = radSz.value; });
+
+    document.getElementById('sel-deselect').addEventListener('click', () => {
+      this.selection = null;
+      this.canvas.stopMarch();
+      this.canvas.render();
     });
 
     document.getElementById('canvas-area').dataset.tool = this.currentTool;
@@ -125,7 +139,10 @@ class ToolEngine {
       }
       case 'rect-shape': {
         const preview = cloneImageData(this._previewImageData);
-        const pts = rectOutlinePixels(this._startX, this._startY, x, y);
+        const r = +(document.getElementById('corner-radius').value || 0);
+        const pts = r > 0
+          ? roundedRectPixels(this._startX, this._startY, x, y, r)
+          : rectOutlinePixels(this._startX, this._startY, x, y);
         pts.forEach(([px, py]) => this._plotPixel(preview, px, py, useColor));
         this.layerMgr.setActiveFrame(fi, preview);
         this.canvas.render();
@@ -181,11 +198,14 @@ class ToolEngine {
         this._previewImageData = null;
         this._onPaint();
         break;
+      case 'select-rect':
+        if (this.selection) this.canvas.startMarch();
+        break;
       case 'select-lasso':
-        // Close lasso
         if (this._lassoPath.length > 2) {
           this._lassoPath.push(this._lassoPath[0]);
           this.canvas.render();
+          this.canvas.startMarch();
         }
         break;
       case 'move':

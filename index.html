@@ -113,6 +113,21 @@
         <span id="brush-size-val">1</span>
       </div>
 
+      <!-- Corner Radius (rect-shape only) -->
+      <div class="tool-section" id="corner-radius-section" style="display:none">
+        <label>Radius</label>
+        <input type="range" id="corner-radius" min="0" max="64" value="0">
+        <span id="corner-radius-val">0</span>
+      </div>
+
+      <!-- Selection actions hint -->
+      <div class="tool-section" id="selection-actions" style="display:none">
+        <div class="sel-hint">Del — clear</div>
+        <div class="sel-hint">⌘C — copy</div>
+        <div class="sel-hint">⌘V — paste</div>
+        <button id="sel-deselect" title="Deselect">✕ Desel</button>
+      </div>
+
       <!-- Color Swatches -->
       <div class="color-swatches">
         <div id="bg-color" title="Background color"></div>

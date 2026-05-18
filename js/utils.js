@@ -145,3 +145,36 @@ function rectOutlinePixels(x0, y0, x1, y1) {
   for (let y = minY+1; y < maxY; y++) { pts.push([minX,y]); pts.push([maxX,y]); }
   return pts;
 }
+
+// Rounded rectangle outline pixels
+function roundedRectPixels(x0, y0, x1, y1, r) {
+  const minX = Math.min(x0,x1), maxX = Math.max(x0,x1);
+  const minY = Math.min(y0,y1), maxY = Math.max(y0,y1);
+  r = Math.max(0, Math.min(r, Math.floor(Math.min(maxX - minX, maxY - minY) / 2)));
+  if (r === 0) return rectOutlinePixels(x0, y0, x1, y1);
+
+  const seen = new Set();
+  const add = (x, y) => { const k = x + ',' + y; if (!seen.has(k)) { seen.add(k); } };
+
+  // Straight edges
+  for (let x = minX + r; x <= maxX - r; x++) { add(x, minY); add(x, maxY); }
+  for (let y = minY + r; y <= maxY - r; y++) { add(minX, y); add(maxX, y); }
+
+  // Quarter-circle corners via midpoint circle algorithm
+  function quarterArc(cx, cy, sx, sy) {
+    let x = 0, y = r, d = 1 - r;
+    while (x <= y) {
+      add(cx + sx * x, cy + sy * y);
+      add(cx + sx * y, cy + sy * x);
+      if (d < 0) { d += 2 * x + 3; }
+      else       { d += 2 * (x - y) + 5; y--; }
+      x++;
+    }
+  }
+  quarterArc(minX + r, minY + r, -1, -1); // top-left
+  quarterArc(maxX - r, minY + r, +1, -1); // top-right
+  quarterArc(maxX - r, maxY - r, +1, +1); // bottom-right
+  quarterArc(minX + r, maxY - r, -1, +1); // bottom-left
+
+  return [...seen].map(s => s.split(',').map(Number));
+}
