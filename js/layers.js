@@ -31,7 +31,7 @@ class LayerManager {
         return newId;
       });
     });
-    this.render();
+    this.renderUI();
   }
 
   addLayer(name) {

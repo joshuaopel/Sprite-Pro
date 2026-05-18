@@ -427,41 +427,52 @@ class Model3DRenderer {
 
     const { width, height } = this.renderedSprites[0];
 
-    // Resize canvas to sprite size
-    layerMgr.resize(width, height);
-    canvasEngine.reinit(width, height);
-
-    // Group by direction, create one layer per direction
+    // Group sprites by direction name
     const byDir = {};
     this.renderedSprites.forEach(s => {
       if (!byDir[s.dirName]) byDir[s.dirName] = [];
       byDir[s.dirName].push(s);
     });
-
     const dirs = Object.keys(byDir);
     const maxFrames = Math.max(...dirs.map(d => byDir[d].length));
 
-    // Ensure enough frames in timeline
-    while (timeline.frameCount < maxFrames) timeline.addFrame();
+    // Reset canvas dimensions directly (avoid calling resize which goes through UI)
+    layerMgr.width = width;
+    layerMgr.height = height;
 
-    // Clear existing layers and create one per direction
+    // Reset frame count and timeline state
+    layerMgr.frameCount = maxFrames;
+    timeline.currentFrame = 0;
+    timeline.frameDurations = Array.from({length: maxFrames}, () => Math.round(1000 / timeline.fps));
+    if (timeline.playing) timeline.pause();
+
+    // Build fresh layers — one per direction — directly, without going through addLayer()
+    // so we can populate the frames before any UI calls
     layerMgr.layers = [];
+    dirs.forEach(dirName => {
+      const layer = {
+        id: layerMgr._mkId(),
+        name: `Dir ${dirName}`,
+        visible: true,
+        opacity: 100,
+        locked: false,
+        frames: Array.from({length: maxFrames}, () => new ImageData(width, height))
+      };
+      byDir[dirName].forEach((sprite, fi) => {
+        layer.frames[fi] = sprite.imageData;
+      });
+      layerMgr.layers.unshift(layer); // unshift so first direction ends up on top
+    });
     layerMgr.activeIdx = 0;
 
-    dirs.forEach(dirName => {
-      const layer = layerMgr.addLayer(`Dir ${dirName}`);
-      byDir[dirName].forEach((sprite, fi) => {
-        if (fi < layer.frames.length) {
-          layer.frames[fi] = sprite.imageData;
-        }
-      });
-    });
-
+    // Reinit canvas at new size, then render everything
+    canvasEngine.reinit(width, height);
     layerMgr.renderUI();
     canvasEngine.render();
     canvasEngine.renderThumbs();
+    timeline.render();
 
-    // Switch to editor tab
+    // Switch to editor
     document.getElementById('tab-editor').click();
   }
 
