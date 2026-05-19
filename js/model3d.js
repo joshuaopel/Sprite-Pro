@@ -187,38 +187,57 @@ class Model3DRenderer {
   }
 
   _applyLighting(preset) {
-    // Remove existing lights
     this.scene.children.filter(c => c.isLight).forEach(l => this.scene.remove(l));
+    this._keyLight = null;
+    this._ambientLight = null;
+    this._fillLight = null;
 
-    switch(preset) {
+    const keyInt  = parseFloat(document.getElementById('light-key-int')?.value  ?? 1.0);
+    const ambInt  = parseFloat(document.getElementById('light-ambient')?.value  ?? 0.6);
+
+    switch (preset) {
       case 'standard': {
-        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-        const dir = new THREE.DirectionalLight(0xffffff, 1.0);
-        dir.position.set(5, 10, 5);
-        dir.castShadow = true;
-        this.scene.add(ambient, dir);
+        this._ambientLight = new THREE.AmbientLight(0xffffff, ambInt);
+        this._keyLight = new THREE.DirectionalLight(0xffffff, keyInt);
+        this._keyLight.castShadow = true;
+        this.scene.add(this._ambientLight, this._keyLight);
         break;
       }
       case 'soft': {
-        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-        const h = new THREE.HemisphereLight(0xffeeb1, 0x080820, 0.8);
-        this.scene.add(ambient, h);
+        this._ambientLight = new THREE.AmbientLight(0xffffff, ambInt);
+        this._fillLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, keyInt * 0.8);
+        this.scene.add(this._ambientLight, this._fillLight);
         break;
       }
       case 'hard': {
-        const ambient = new THREE.AmbientLight(0x111111, 1);
-        const dir = new THREE.DirectionalLight(0xffffff, 2.0);
-        dir.position.set(3, 8, 2);
-        dir.castShadow = true;
-        this.scene.add(ambient, dir);
+        this._ambientLight = new THREE.AmbientLight(0x111111, ambInt * 0.2);
+        this._keyLight = new THREE.DirectionalLight(0xffffff, keyInt * 2);
+        this._keyLight.castShadow = true;
+        this.scene.add(this._ambientLight, this._keyLight);
         break;
       }
       case 'flat': {
-        const ambient = new THREE.AmbientLight(0xffffff, 2.0);
-        this.scene.add(ambient);
+        this._ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+        this.scene.add(this._ambientLight);
         break;
       }
     }
+    this._updateLightDir();
+    const hasDirLight = !!this._keyLight;
+    const dirEl = document.getElementById('light-dir-controls');
+    if (dirEl) dirEl.style.display = hasDirLight ? '' : 'none';
+  }
+
+  _updateLightDir() {
+    if (!this._keyLight) return;
+    const az = parseFloat(document.getElementById('light-key-az')?.value ?? 45) * Math.PI / 180;
+    const el = parseFloat(document.getElementById('light-key-el')?.value ?? 60) * Math.PI / 180;
+    const d = 10;
+    this._keyLight.position.set(
+      d * Math.cos(el) * Math.sin(az),
+      d * Math.sin(el),
+      d * Math.cos(el) * Math.cos(az)
+    );
   }
 
   getCameraAzimuth() {
@@ -407,24 +426,24 @@ class Model3DRenderer {
     this.renderedSprites = [];
     this.renderGrid.innerHTML = '';
 
-    // Offscreen renderer
-    const offCanvas = document.createElement('canvas');
-    offCanvas.width = w; offCanvas.height = h;
-    const offRenderer = new THREE.WebGLRenderer({
-      canvas: offCanvas, antialias: false, alpha: true,
-      preserveDrawingBuffer: true
+    // Render into a WebGLRenderTarget on the EXISTING renderer so all WebGL
+    // resources (shaders, textures, skinned mesh bone textures) are already
+    // in the correct GL context. A separate renderer/context fails for rigged models.
+    const rt = new THREE.WebGLRenderTarget(w, h, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: true,
+      stencilBuffer: false
     });
-    offRenderer.setSize(w, h, false);
-    offRenderer.setPixelRatio(1);
 
-    // Setup offscreen orthographic camera (independent of preview camera)
     const cameraPreset = document.getElementById('camera-preset').value;
     const { elevation: baseElev } = this._presetAngles(cameraPreset);
     const elevation = overrideElev !== null ? overrideElev : baseElev;
     const elevRad = elevation * Math.PI / 180;
     const aspect = w / h;
 
-    // Auto-size frustum from model bounding sphere so any model fits
     this.model.updateMatrixWorld(true);
     const _box = new THREE.Box3().setFromObject(this.model);
     const _sphere = new THREE.Sphere();
@@ -432,22 +451,28 @@ class Model3DRenderer {
     const modelCenter = _sphere.center;
     const s = _sphere.radius * 1.2;
     const renderDist = Math.max(_sphere.radius * 6, 10);
-    const offCamera = new THREE.OrthographicCamera(-s * aspect, s * aspect, s, -s, 0.01, renderDist * 2 + _sphere.radius * 2);
+    const offCamera = new THREE.OrthographicCamera(
+      -s * aspect, s * aspect, s, -s,
+      0.01, renderDist * 2 + _sphere.radius * 2
+    );
 
-    // Apply lighting to scene
     this._applyLighting(document.getElementById('lighting-preset').value);
+
+    const savedClearColor = new THREE.Color();
+    this.renderer.getClearColor(savedClearColor);
+    const savedClearAlpha = this.renderer.getClearAlpha();
+
+    const pixelBuf = new Uint8Array(w * h * 4);
 
     dirAngles.forEach((dirAngle, di) => {
       const baseAzRad = dirAngle * Math.PI / 180;
 
       for (let fi = 0; fi < framesPerDir; fi++) {
-        // Set animation time
         if (this.mixer && this.animActions.length > 0) {
           const t = (fi / framesPerDir) * this.animActions[0].getClip().duration;
           this.mixer.setTime(t);
         }
 
-        // Position camera around model center
         const azRad = baseAzRad;
         offCamera.position.set(
           modelCenter.x + renderDist * Math.cos(elevRad) * Math.sin(azRad),
@@ -457,18 +482,19 @@ class Model3DRenderer {
         offCamera.lookAt(modelCenter);
         offCamera.updateProjectionMatrix();
 
-        // Set background
         if (bgMode === 'transparent') {
-          offRenderer.setClearColor(0x000000, 0);
+          this.renderer.setClearColor(0x000000, 0);
         } else {
-          const c = new THREE.Color(bgColor);
-          offRenderer.setClearColor(c, 1);
+          this.renderer.setClearColor(new THREE.Color(bgColor), 1);
         }
 
-        offRenderer.render(this.scene, offCamera);
+        this.renderer.setRenderTarget(rt);
+        this.renderer.clear();
+        this.renderer.render(this.scene, offCamera);
+        this.renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixelBuf);
+        this.renderer.setRenderTarget(null);
 
-        // Grab pixels via WebGL readPixels (renderer uses WebGL context)
-        const imageData = this._getRendererPixels(offRenderer, w, h);
+        const imageData = this._rtPixelsToImageData(pixelBuf, w, h);
 
         this.renderedSprites.push({
           dir: dirAngles[di],
@@ -479,23 +505,24 @@ class Model3DRenderer {
           height: h
         });
 
-        // Add to grid
         this._addSpriteCard(imageData, w, h, (dirNames[dirs]||['?'])[di]||di, fi, framesPerDir);
       }
     });
 
+    this.renderer.setClearColor(savedClearColor, savedClearAlpha);
+    rt.dispose();
     this.importBtn.disabled = false;
-    offRenderer.dispose();
   }
 
-  _getRendererPixels(renderer, w, h) {
-    // Use 2D canvas drawImage — more reliable than gl.readPixels across devices
-    const canvas2d = document.createElement('canvas');
-    canvas2d.width = w;
-    canvas2d.height = h;
-    const ctx2d = canvas2d.getContext('2d');
-    ctx2d.drawImage(renderer.domElement, 0, 0, w, h);
-    return ctx2d.getImageData(0, 0, w, h);
+  _rtPixelsToImageData(buffer, w, h) {
+    // readRenderTargetPixels fills rows bottom-to-top (WebGL convention).
+    // Flip vertically so ImageData is top-to-bottom.
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const srcRow = (h - 1 - y) * w * 4;
+      data.set(buffer.subarray(srcRow, srcRow + w * 4), y * w * 4);
+    }
+    return new ImageData(data, w, h);
   }
 
   _addSpriteCard(imageData, w, h, dirName, frameIdx, totalFrames) {
@@ -901,6 +928,25 @@ class Model3DRenderer {
     // Lighting
     document.getElementById('lighting-preset').addEventListener('change', () => {
       this._applyLighting(document.getElementById('lighting-preset').value);
+    });
+
+    // Live light direction / intensity controls
+    const updateLightDir = () => {
+      const azVal = document.getElementById('light-key-az').value;
+      const elVal = document.getElementById('light-key-el').value;
+      const kiVal = parseFloat(document.getElementById('light-key-int').value);
+      const amVal = parseFloat(document.getElementById('light-ambient').value);
+      document.getElementById('light-az-val').textContent = azVal + '°';
+      document.getElementById('light-el-val').textContent = elVal + '°';
+      document.getElementById('light-ki-val').textContent = kiVal.toFixed(1);
+      document.getElementById('light-am-val').textContent = amVal.toFixed(1);
+      if (this._keyLight) this._keyLight.intensity = kiVal;
+      if (this._ambientLight) this._ambientLight.intensity = amVal;
+      if (this._fillLight) this._fillLight.intensity = kiVal * 0.8;
+      this._updateLightDir();
+    };
+    ['light-key-az','light-key-el','light-key-int','light-ambient'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateLightDir);
     });
 
     // Single direction controls: show/hide based on dirs selection

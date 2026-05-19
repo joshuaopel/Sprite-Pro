@@ -305,6 +305,28 @@
           <option value="hard">Hard/Dramatic</option>
           <option value="flat">Flat/Unlit</option>
         </select>
+        <div id="light-dir-controls" style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px">
+            <span style="min-width:52px;color:var(--fg2)">Key Az</span>
+            <input type="range" id="light-key-az" min="0" max="360" value="45" step="1" style="flex:1">
+            <span id="light-az-val" style="min-width:32px;text-align:right">45°</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px">
+            <span style="min-width:52px;color:var(--fg2)">Key El</span>
+            <input type="range" id="light-key-el" min="0" max="90" value="60" step="1" style="flex:1">
+            <span id="light-el-val" style="min-width:32px;text-align:right">60°</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px">
+            <span style="min-width:52px;color:var(--fg2)">Key Int</span>
+            <input type="range" id="light-key-int" min="0" max="4" value="1" step="0.1" style="flex:1">
+            <span id="light-ki-val" style="min-width:32px;text-align:right">1.0</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px">
+            <span style="min-width:52px;color:var(--fg2)">Ambient</span>
+            <input type="range" id="light-ambient" min="0" max="2" value="0.6" step="0.05" style="flex:1">
+            <span id="light-am-val" style="min-width:32px;text-align:right">0.6</span>
+          </div>
+        </div>
       </div>
 
       <div class="model-section">
