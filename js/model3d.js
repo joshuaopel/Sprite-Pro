@@ -147,6 +147,7 @@ class Model3DRenderer {
   // Scale the model by `factor` relative to the normalized 2-unit size.
   // baseScale is only passed the first time (from loadModel); after that
   // the stored this._baseNormScale is reused.
+  // Does NOT auto-frame — caller decides whether to frame.
   _applyModelScale(factor, baseScale) {
     if (!this.model || !this._modelCenter || !this._modelSize) return;
     if (baseScale !== undefined) this._baseNormScale = baseScale;
@@ -159,10 +160,10 @@ class Model3DRenderer {
       -c.z * s
     );
     this.model.updateMatrixWorld(true);
-    this._frameModel();
   }
 
-  // Auto-fit camera distance and target to the loaded model's bounding sphere
+  // Auto-fit camera distance and target to the loaded model's bounding sphere.
+  // Also updates camera near/far so models of any size are never clipped.
   _frameModel() {
     if (!this.model || !this.camera || !this.controls) return;
     this.model.updateMatrixWorld(true);
@@ -173,10 +174,14 @@ class Model3DRenderer {
     const halfFovRad = (this.camera.fov / 2) * Math.PI / 180;
     const dist = (r / Math.sin(halfFovRad)) * 1.25;
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    if (dir.lengthSq() < 0.001) dir.set(0, 0, 1); // guard against zero vector
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(dir, dist);
     this.controls.minDistance = r * 0.05;
     this.controls.maxDistance = dist * 10;
+    // Scale near/far dynamically so any model size stays visible
+    this.camera.near = Math.max(0.001, r * 0.001);
+    this.camera.far = Math.max(1000, dist * 20);
     this.camera.updateProjectionMatrix();
     this.controls.update();
   }
@@ -299,6 +304,7 @@ class Model3DRenderer {
 
         const baseScale = 2 / maxDim;
         this._applyModelScale(1.0, baseScale);
+        this._frameModel(); // frame AFTER scale applied
 
         // Reset scale slider to 1×
         const scaleSlider = document.getElementById('model-scale');
@@ -874,7 +880,8 @@ class Model3DRenderer {
       this._frameModel();
     });
 
-    // Model scale slider — rescale from original bounds, then re-frame
+    // Model scale slider — rescale model; camera stays put so the size change is visible.
+    // User can press ⊡ Frame to re-fit the camera after scaling.
     document.getElementById('model-scale').addEventListener('input', e => {
       const factor = Math.pow(2, +e.target.value);
       document.getElementById('model-scale-val').textContent = factor.toFixed(2) + '×';
