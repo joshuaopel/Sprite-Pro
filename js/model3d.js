@@ -137,10 +137,30 @@ class Model3DRenderer {
       this.controls.target.copy(target);
       this.controls.update();
     }
+
+    if (this.model) this._frameModel();
   }
 
   // Legacy alias used elsewhere
   _applyCamera(preset) { this._setCameraToPreset(preset); }
+
+  // Auto-fit camera distance and target to the loaded model's bounding sphere
+  _frameModel() {
+    if (!this.model || !this.camera || !this.controls) return;
+    const box = new THREE.Box3().setFromObject(this.model);
+    const sphere = new THREE.Sphere();
+    box.getBoundingSphere(sphere);
+    const r = Math.max(sphere.radius, 0.1);
+    const halfFovRad = (this.camera.fov / 2) * Math.PI / 180;
+    const dist = (r / Math.sin(halfFovRad)) * 1.25;
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(sphere.center);
+    this.camera.position.copy(sphere.center).addScaledVector(dir, dist);
+    this.controls.minDistance = r * 0.05;
+    this.controls.maxDistance = dist * 10;
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+  }
 
   _applyLighting(preset) {
     // Remove existing lights
@@ -297,6 +317,7 @@ class Model3DRenderer {
 
         this.hint.style.display = 'none';
         this.renderBtn.disabled = false;
+        this._frameModel();
         URL.revokeObjectURL(url);
       },
       xhr => {
@@ -366,13 +387,19 @@ class Model3DRenderer {
 
     // Setup offscreen orthographic camera (independent of preview camera)
     const cameraPreset = document.getElementById('camera-preset').value;
-    const { elevation: baseElev, distance: baseD } = this._presetAngles(cameraPreset);
+    const { elevation: baseElev } = this._presetAngles(cameraPreset);
     const elevation = overrideElev !== null ? overrideElev : baseElev;
-    const d = overrideDist !== null ? overrideDist : baseD;
     const elevRad = elevation * Math.PI / 180;
     const aspect = w / h;
-    const s = 1.5;
-    const offCamera = new THREE.OrthographicCamera(-s * aspect, s * aspect, s, -s, 0.01, 1000);
+
+    // Auto-size frustum from model bounding sphere so any model fits
+    const _box = new THREE.Box3().setFromObject(this.model);
+    const _sphere = new THREE.Sphere();
+    _box.getBoundingSphere(_sphere);
+    const modelCenter = _sphere.center;
+    const s = _sphere.radius * 1.2;
+    const renderDist = Math.max(_sphere.radius * 6, 10);
+    const offCamera = new THREE.OrthographicCamera(-s * aspect, s * aspect, s, -s, 0.01, renderDist * 2 + _sphere.radius * 2);
 
     // Apply lighting to scene
     this._applyLighting(document.getElementById('lighting-preset').value);
@@ -387,14 +414,14 @@ class Model3DRenderer {
           this.mixer.setTime(t);
         }
 
-        // Position camera around model
+        // Position camera around model center
         const azRad = baseAzRad;
         offCamera.position.set(
-          d * Math.cos(elevRad) * Math.sin(azRad),
-          d * Math.sin(elevRad),
-          d * Math.cos(elevRad) * Math.cos(azRad)
+          modelCenter.x + renderDist * Math.cos(elevRad) * Math.sin(azRad),
+          modelCenter.y + renderDist * Math.sin(elevRad),
+          modelCenter.z + renderDist * Math.cos(elevRad) * Math.cos(azRad)
         );
-        offCamera.lookAt(0, 0.5, 0);
+        offCamera.lookAt(modelCenter);
         offCamera.updateProjectionMatrix();
 
         // Set background
@@ -813,6 +840,11 @@ class Model3DRenderer {
     // Reset view button
     document.getElementById('reset-view-btn').addEventListener('click', () => {
       this._setCameraFromUI();
+    });
+
+    // Frame model button — re-fit camera to model bounds at any time
+    document.getElementById('frame-model-btn').addEventListener('click', () => {
+      this._frameModel();
     });
 
     // Custom camera sliders
