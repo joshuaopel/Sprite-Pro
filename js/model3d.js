@@ -16,6 +16,19 @@ class Model3DRenderer {
     this._rafId = null;
     this.renderedSprites = [];
 
+    // Pose mode
+    this.poseMode = false;
+    this.bones = [];
+    this.skeleton = null;
+    this.boneOriginalQuaternions = new Map();
+    this.selectedBone = null;
+    this._boneDragging = false;
+    this._boneDragStart = null;
+    this._boneStartWorldQ = null;
+    this._boneStartLocalQ = null;
+    this.boneOverlayCanvas = null;
+    this.boneOverlayCtx = null;
+
     this.previewCanvas = document.getElementById('model-preview-canvas');
     this.hint = document.getElementById('model-hint');
     this.renderBtn = document.getElementById('render-sprites-btn');
@@ -24,6 +37,8 @@ class Model3DRenderer {
 
     this._initThree();
     this._bindUI();
+    this._initBoneOverlay();
+    this._initBoneInteraction();
   }
 
   _initThree() {
@@ -78,6 +93,14 @@ class Model3DRenderer {
       this.camera.updateProjectionMatrix();
     }
     if (this.controls) this.controls.update();
+    if (this.boneOverlayCanvas) {
+      const pr = window.devicePixelRatio || 1;
+      this.boneOverlayCanvas.width = Math.floor(w * pr);
+      this.boneOverlayCanvas.height = Math.floor(h * pr);
+      this.boneOverlayCanvas.style.width = w + 'px';
+      this.boneOverlayCanvas.style.height = h + 'px';
+      this.boneOverlayCtx = this.boneOverlayCanvas.getContext('2d');
+    }
   }
 
   // Returns {elevation, azimuth, distance} for a named preset
@@ -178,6 +201,7 @@ class Model3DRenderer {
       if (this.renderer && this.scene && this.camera) {
         this.renderer.render(this.scene, this.camera);
       }
+      this._drawBoneOverlay();
     };
     loop();
   }
@@ -233,6 +257,26 @@ class Model3DRenderer {
           -center.z * scale
         );
         this.scene.add(this.model);
+
+        // Detect skeleton for pose mode
+        this.bones = [];
+        this.skeleton = null;
+        this.boneOriginalQuaternions = new Map();
+        this.model.traverse(child => {
+          if (child.isSkinnedMesh && child.skeleton && !this.skeleton) {
+            this.skeleton = child.skeleton;
+            this.bones = [...child.skeleton.bones];
+          }
+        });
+        if (this.bones.length > 0) {
+          this.boneOriginalQuaternions = new Map(
+            this.bones.map(b => [b.uuid, b.quaternion.clone()])
+          );
+          document.getElementById('pose-mode-section').style.display = '';
+        } else {
+          document.getElementById('pose-mode-section').style.display = 'none';
+          if (this.poseMode) this._exitPoseMode();
+        }
 
         // Animations
         this.mixer = new THREE.AnimationMixer(this.model);
@@ -482,6 +526,256 @@ class Model3DRenderer {
     this._setCameraToPreset(preset);
   }
 
+  _initBoneOverlay() {
+    this.boneOverlayCanvas = document.getElementById('bone-overlay-canvas');
+    if (this.boneOverlayCanvas) {
+      this.boneOverlayCtx = this.boneOverlayCanvas.getContext('2d');
+    }
+  }
+
+  _initBoneInteraction() {
+    const canvas = this.previewCanvas;
+
+    // Helper: get canvas-pixel coords from a mouse or touch event
+    const cvPos = e => {
+      const rect = canvas.getBoundingClientRect();
+      const pr = window.devicePixelRatio || 1;
+      const cx = (e.clientX !== undefined ? e.clientX : e.touches[0].clientX);
+      const cy = (e.clientY !== undefined ? e.clientY : e.touches[0].clientY);
+      return { x: (cx - rect.left) * pr, y: (cy - rect.top) * pr };
+    };
+
+    const startDrag = (e, pos) => {
+      if (!this.poseMode) return false;
+      const bone = this._findNearestBone(pos.x, pos.y);
+      if (!bone) return false;
+      e.stopPropagation();
+      this._selectBone(bone);
+      this._boneDragging = true;
+      this._boneDragStart = pos;
+      this._boneStartWorldQ = new THREE.Quaternion();
+      bone.getWorldQuaternion(this._boneStartWorldQ);
+      return true;
+    };
+
+    const moveDrag = (e, pos) => {
+      if (!this.poseMode || !this._boneDragging) return;
+      e.stopPropagation();
+      this._rotateBoneByDrag(pos.x, pos.y);
+      this._updateBoneSliders();
+    };
+
+    const endDrag = e => {
+      if (!this.poseMode || !this._boneDragging) return;
+      e.stopPropagation();
+      this._boneDragging = false;
+      canvas.style.cursor = '';
+    };
+
+    canvas.addEventListener('mousedown', e => {
+      const p = cvPos(e);
+      if (startDrag(e, p)) canvas.style.cursor = 'grabbing';
+    }, true);
+    canvas.addEventListener('mousemove', e => moveDrag(e, cvPos(e)), true);
+    canvas.addEventListener('mouseup', e => endDrag(e), true);
+
+    canvas.addEventListener('touchstart', e => {
+      startDrag(e, cvPos(e.touches[0]));
+    }, true);
+    canvas.addEventListener('touchmove', e => {
+      if (this._boneDragging) moveDrag(e, cvPos(e.touches[0]));
+    }, true);
+    canvas.addEventListener('touchend', e => endDrag(e), true);
+  }
+
+  _enterPoseMode() {
+    this.poseMode = true;
+    document.getElementById('bone-overlay-canvas').style.display = '';
+    document.getElementById('pose-controls').style.display = 'flex';
+    document.getElementById('pose-toggle-btn').textContent = '✕ Exit Pose Mode';
+    document.getElementById('pose-toggle-btn').classList.add('active');
+    document.getElementById('pose-hint').style.display = '';
+    document.getElementById('orbit-hint').style.display = 'none';
+    this._buildBoneList();
+  }
+
+  _exitPoseMode() {
+    this.poseMode = false;
+    this.selectedBone = null;
+    this._boneDragging = false;
+    document.getElementById('bone-overlay-canvas').style.display = 'none';
+    if (this.boneOverlayCtx) {
+      const c = this.boneOverlayCanvas;
+      this.boneOverlayCtx.clearRect(0, 0, c.width, c.height);
+    }
+    document.getElementById('pose-controls').style.display = 'none';
+    document.getElementById('pose-toggle-btn').textContent = '⚙ Pose Mode';
+    document.getElementById('pose-toggle-btn').classList.remove('active');
+    document.getElementById('pose-hint').style.display = 'none';
+    document.getElementById('orbit-hint').style.display = '';
+  }
+
+  _drawBoneOverlay() {
+    if (!this.poseMode || !this.boneOverlayCtx || !this.bones.length) return;
+    const ctx = this.boneOverlayCtx;
+    const c = this.boneOverlayCanvas;
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Draw bone connection lines
+    ctx.lineWidth = 1.5;
+    this.bones.forEach(bone => {
+      if (!bone.parent || !bone.parent.isBone) return;
+      const p1 = this._boneToScreen(bone.parent);
+      const p2 = this._boneToScreen(bone);
+      if (!p1 || !p2) return;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.strokeStyle = 'rgba(255,215,50,0.45)';
+      ctx.stroke();
+    });
+
+    // Draw bone joints (selected on top)
+    const drawJoint = (bone, isSelected) => {
+      const p = this._boneToScreen(bone);
+      if (!p) return;
+      const r = isSelected ? 8 : 5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? '#ff5555' : 'rgba(255,215,50,0.85)';
+      ctx.fill();
+      ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(180,130,0,0.9)';
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.stroke();
+    };
+
+    this.bones.forEach(b => { if (b !== this.selectedBone) drawJoint(b, false); });
+    if (this.selectedBone) {
+      drawJoint(this.selectedBone, true);
+      // Label
+      const p = this._boneToScreen(this.selectedBone);
+      if (p) {
+        ctx.font = `${11 * (window.devicePixelRatio || 1)}px monospace`;
+        const label = this.selectedBone.name;
+        const tw = ctx.measureText(label).width;
+        const pr = window.devicePixelRatio || 1;
+        const pad = 5 * pr;
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.fillRect(p.x + 12 * pr, p.y - 9 * pr, tw + pad * 2, 16 * pr);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, p.x + 12 * pr + pad, p.y + 4 * pr);
+      }
+    }
+  }
+
+  _boneToScreen(bone) {
+    if (!this.camera || !this.boneOverlayCanvas) return null;
+    const pos = new THREE.Vector3();
+    bone.getWorldPosition(pos);
+    pos.project(this.camera);
+    if (pos.z > 1) return null; // clipped
+    const c = this.boneOverlayCanvas;
+    return {
+      x: (pos.x + 1) / 2 * c.width,
+      y: (-pos.y + 1) / 2 * c.height
+    };
+  }
+
+  _findNearestBone(sx, sy, radius) {
+    radius = radius || (14 * (window.devicePixelRatio || 1));
+    let best = null, bestDist = radius;
+    this.bones.forEach(bone => {
+      const p = this._boneToScreen(bone);
+      if (!p) return;
+      const d = Math.hypot(p.x - sx, p.y - sy);
+      if (d < bestDist) { bestDist = d; best = bone; }
+    });
+    return best;
+  }
+
+  _selectBone(bone) {
+    this.selectedBone = bone;
+    document.querySelectorAll('.bone-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.uuid === bone.uuid);
+    });
+    document.getElementById('selected-bone-name').textContent = bone.name || '(bone)';
+    document.getElementById('selected-bone-panel').style.display = 'flex';
+    this._updateBoneSliders();
+    // Scroll into view in list
+    const el = document.querySelector(`.bone-item[data-uuid="${bone.uuid}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
+
+  _updateBoneSliders() {
+    if (!this.selectedBone) return;
+    const r = this.selectedBone.rotation;
+    const deg = v => Math.round(v * 180 / Math.PI);
+    ['x','y','z'].forEach(axis => {
+      const val = deg(r[axis]);
+      document.getElementById(`bone-rot-${axis}`).value = val;
+      document.getElementById(`bone-rot-${axis}-val`).textContent = val + '°';
+    });
+  }
+
+  _buildBoneList() {
+    const list = document.getElementById('bone-list');
+    list.innerHTML = '';
+    const depthOf = bone => {
+      let d = 0, b = bone;
+      while (b.parent && b.parent.isBone) { d++; b = b.parent; }
+      return Math.min(d, 5);
+    };
+    this.bones.forEach(bone => {
+      const item = document.createElement('div');
+      item.className = 'bone-item';
+      item.dataset.uuid = bone.uuid;
+      item.style.paddingLeft = (8 + depthOf(bone) * 8) + 'px';
+      item.textContent = bone.name || '(bone)';
+      item.title = bone.name;
+      item.addEventListener('click', () => this._selectBone(bone));
+      list.appendChild(item);
+    });
+  }
+
+  _rotateBoneByDrag(x, y) {
+    if (!this.selectedBone || !this._boneDragStart || !this._boneStartWorldQ) return;
+    const sensitivity = 0.006;
+    const dx = (x - this._boneDragStart.x) * sensitivity;
+    const dy = (y - this._boneDragStart.y) * sensitivity;
+
+    // Rotate in camera/screen space: dx → camera-up axis, dy → camera-right axis
+    const camQ = this.camera.quaternion;
+    const worldUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(camQ).normalize();
+    const worldRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQ).normalize();
+
+    const qDelta = new THREE.Quaternion()
+      .setFromAxisAngle(worldUp, dx)
+      .premultiply(new THREE.Quaternion().setFromAxisAngle(worldRight, -dy));
+
+    const newWorldQ = qDelta.clone().multiply(this._boneStartWorldQ);
+
+    const bone = this.selectedBone;
+    if (bone.parent) {
+      const parentWorldQ = new THREE.Quaternion();
+      bone.parent.getWorldQuaternion(parentWorldQ);
+      bone.quaternion.copy(parentWorldQ.clone().invert().multiply(newWorldQ));
+    } else {
+      bone.quaternion.copy(newWorldQ);
+    }
+    bone.updateMatrixWorld(true);
+  }
+
+  _resetPose() {
+    this.bones.forEach(bone => {
+      const orig = this.boneOriginalQuaternions.get(bone.uuid);
+      if (orig) {
+        bone.quaternion.copy(orig);
+        bone.updateMatrixWorld(true);
+      }
+    });
+    if (this.selectedBone) this._updateBoneSliders();
+  }
+
   _bindUI() {
     // File drop zone
     const dropZone = document.getElementById('model-drop-zone');
@@ -604,6 +898,25 @@ class Model3DRenderer {
         this.isPlaying = true;
         document.getElementById('anim-play-btn').textContent = '⏸ Pause';
       }
+    });
+
+    // Pose mode toggle
+    document.getElementById('pose-toggle-btn').addEventListener('click', () => {
+      this.poseMode ? this._exitPoseMode() : this._enterPoseMode();
+    });
+
+    // Reset pose
+    document.getElementById('pose-reset-btn').addEventListener('click', () => this._resetPose());
+
+    // Bone rotation sliders
+    ['x','y','z'].forEach(axis => {
+      document.getElementById(`bone-rot-${axis}`).addEventListener('input', e => {
+        if (!this.selectedBone) return;
+        const rad = +e.target.value * Math.PI / 180;
+        this.selectedBone.rotation[axis] = rad;
+        this.selectedBone.updateMatrixWorld(true);
+        document.getElementById(`bone-rot-${axis}-val`).textContent = e.target.value + '°';
+      });
     });
 
     // Resize renderer on window resize

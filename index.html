@@ -309,6 +309,36 @@
         </div>
       </div>
 
+      <!-- Pose Mode (hidden until a rigged model is loaded) -->
+      <div class="model-section" id="pose-mode-section" style="display:none">
+        <label>Character Pose</label>
+        <button id="pose-toggle-btn" class="pose-btn">⚙ Pose Mode</button>
+        <div id="pose-controls" style="display:none;flex-direction:column;gap:8px">
+          <div id="bone-list-container">
+            <div id="bone-list"></div>
+          </div>
+          <div id="selected-bone-panel" style="display:none;flex-direction:column;gap:5px">
+            <div style="color:var(--accent);font-size:11px;font-weight:600">◆ <span id="selected-bone-name"></span></div>
+            <div class="bone-axis-row">
+              <span class="axis-label x-axis">X</span>
+              <input type="range" id="bone-rot-x" min="-180" max="180" value="0" step="1">
+              <span id="bone-rot-x-val" class="axis-val">0°</span>
+            </div>
+            <div class="bone-axis-row">
+              <span class="axis-label y-axis">Y</span>
+              <input type="range" id="bone-rot-y" min="-180" max="180" value="0" step="1">
+              <span id="bone-rot-y-val" class="axis-val">0°</span>
+            </div>
+            <div class="bone-axis-row">
+              <span class="axis-label z-axis">Z</span>
+              <input type="range" id="bone-rot-z" min="-180" max="180" value="0" step="1">
+              <span id="bone-rot-z-val" class="axis-val">0°</span>
+            </div>
+          </div>
+          <button id="pose-reset-btn" style="background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:11px">↺ Reset All Bones</button>
+        </div>
+      </div>
+
       <button id="render-sprites-btn" class="primary-btn" disabled>Render Sprites</button>
       <button id="import-to-editor-btn" class="primary-btn" disabled>Import to Editor</button>
     </div>
@@ -316,8 +346,10 @@
     <div id="model-main">
       <div id="model-preview-area">
         <canvas id="model-preview-canvas"></canvas>
+        <canvas id="bone-overlay-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none"></canvas>
         <div id="model-hint">Load a GLB/GLTF model to get started</div>
         <div id="orbit-hint">Drag to rotate · Pinch/scroll to zoom · Two-finger pan</div>
+        <div id="pose-hint" style="display:none">Click bone · Drag to rotate · Sliders for fine control</div>
         <div id="model-loading">
           <div class="spinner"></div>
           <span>Loading model…</span>

@@ -620,3 +620,37 @@ small { font-size: 10px; color: var(--text-dim); }
 
 /* ===== LAYER DRAG ===== */
 .layer-item.drag-target { border-color: var(--accent) !important; background: rgba(91,143,249,0.1) !important; }
+
+/* ===== POSE MODE ===== */
+.pose-btn {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 5px 8px; font-size: 11px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pose-btn:hover { background: var(--border); }
+.pose-btn.active { background: var(--accent); border-color: var(--accent-hover); color: #fff; }
+
+#bone-list-container {
+  background: var(--bg0); border: 1px solid var(--border); border-radius: 4px;
+  max-height: 140px; overflow-y: auto;
+}
+.bone-item {
+  padding: 3px 8px; font-size: 11px; color: var(--text-dim);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bone-item:hover { background: var(--bg3); color: var(--text); }
+.bone-item.active { background: rgba(91,143,249,0.2); color: var(--accent); }
+
+.bone-axis-row { display: flex; align-items: center; gap: 5px; }
+.axis-label { font-size: 10px; font-weight: 700; width: 10px; flex-shrink: 0; text-align: center; }
+.x-axis { color: #ff6b6b; }
+.y-axis { color: #6bff9e; }
+.z-axis { color: #6b9eff; }
+.axis-val { font-size: 10px; color: var(--text-dim); width: 30px; text-align: right; flex-shrink: 0; }
+
+#pose-hint {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.6); color: var(--text-dim);
+  font-size: 10px; padding: 3px 10px; border-radius: 10px;
+  pointer-events: none; white-space: nowrap;
+}
