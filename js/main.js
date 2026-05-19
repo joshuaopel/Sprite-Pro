@@ -298,6 +298,8 @@
     document.getElementById('editor-view').classList.add('active');
     document.getElementById('model-view').classList.remove('active');
     document.getElementById('timeline').style.display = '';
+    // Re-fit and redraw after the view becomes visible
+    requestAnimationFrame(() => { canvasEng.fitToWindow(); canvasEng.render(); });
   });
   document.getElementById('tab-model').addEventListener('click', () => {
     document.getElementById('tab-editor').classList.remove('active');

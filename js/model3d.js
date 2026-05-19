@@ -385,20 +385,13 @@ class Model3DRenderer {
   }
 
   _getRendererPixels(renderer, w, h) {
-    const pixels = new Uint8Array(w * h * 4);
-    const gl = renderer.getContext ? renderer.getContext() : renderer.domElement.getContext('webgl2') || renderer.domElement.getContext('webgl');
-    if (!gl) {
-      // Fallback: read from 2D canvas (won't work for WebGL but graceful)
-      return new ImageData(w, h);
-    }
-    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    // Flip Y
-    const flipped = new Uint8Array(w * h * 4);
-    for (let y = 0; y < h; y++) {
-      const src = (h - 1 - y) * w * 4;
-      flipped.set(pixels.slice(src, src + w * 4), y * w * 4);
-    }
-    return new ImageData(new Uint8ClampedArray(flipped), w, h);
+    // Use 2D canvas drawImage — more reliable than gl.readPixels across devices
+    const canvas2d = document.createElement('canvas');
+    canvas2d.width = w;
+    canvas2d.height = h;
+    const ctx2d = canvas2d.getContext('2d');
+    ctx2d.drawImage(renderer.domElement, 0, 0, w, h);
+    return ctx2d.getImageData(0, 0, w, h);
   }
 
   _addSpriteCard(imageData, w, h, dirName, frameIdx, totalFrames) {
@@ -436,44 +429,52 @@ class Model3DRenderer {
     const dirs = Object.keys(byDir);
     const maxFrames = Math.max(...dirs.map(d => byDir[d].length));
 
-    // Reset canvas dimensions directly (avoid calling resize which goes through UI)
-    layerMgr.width = width;
-    layerMgr.height = height;
-
-    // Reset frame count and timeline state
-    layerMgr.frameCount = maxFrames;
-    timeline.currentFrame = 0;
-    timeline.frameDurations = Array.from({length: maxFrames}, () => Math.round(1000 / timeline.fps));
     if (timeline.playing) timeline.pause();
 
-    // Build fresh layers — one per direction — directly, without going through addLayer()
-    // so we can populate the frames before any UI calls
-    layerMgr.layers = [];
-    dirs.forEach(dirName => {
+    // Resize canvas if needed (preserves existing content top-left)
+    if (layerMgr.width !== width || layerMgr.height !== height) {
+      layerMgr.resize(width, height);
+      canvasEngine.reinit(width, height);
+    }
+
+    // Ensure enough animation frames
+    while (timeline.frameCount < maxFrames) {
+      layerMgr.frameCount++;
+      layerMgr.layers.forEach(l => l.frames.push(new ImageData(width, height)));
+      timeline.frameDurations.push(Math.round(1000 / timeline.fps));
+    }
+    timeline.currentFrame = 0;
+
+    // Add each direction as a NEW layer on top of existing layers
+    // Iterate in reverse so direction 0 ends up on top
+    dirs.slice().reverse().forEach(dirName => {
       const layer = {
         id: layerMgr._mkId(),
-        name: `Dir ${dirName}`,
+        name: `3D ${dirName}`,
         visible: true,
         opacity: 100,
         locked: false,
-        frames: Array.from({length: maxFrames}, () => new ImageData(width, height))
+        frames: Array.from({length: layerMgr.frameCount}, () => new ImageData(width, height))
       };
       byDir[dirName].forEach((sprite, fi) => {
-        layer.frames[fi] = sprite.imageData;
+        if (fi < layer.frames.length) layer.frames[fi] = sprite.imageData;
       });
-      layerMgr.layers.unshift(layer); // unshift so first direction ends up on top
+      layerMgr.layers.unshift(layer);
     });
     layerMgr.activeIdx = 0;
 
-    // Reinit canvas at new size, then render everything
-    canvasEngine.reinit(width, height);
+    // Render everything
     layerMgr.renderUI();
     canvasEngine.render();
     canvasEngine.renderThumbs();
     timeline.render();
 
-    // Switch to editor
+    // Switch to editor then re-fit so the new canvas fills the viewport
     document.getElementById('tab-editor').click();
+    requestAnimationFrame(() => {
+      canvasEngine.fitToWindow();
+      canvasEngine.render();
+    });
   }
 
   _setCameraFromUI() {
