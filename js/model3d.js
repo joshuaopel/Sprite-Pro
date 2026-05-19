@@ -426,17 +426,22 @@ class Model3DRenderer {
     this.renderedSprites = [];
     this.renderGrid.innerHTML = '';
 
-    // Render into a WebGLRenderTarget on the EXISTING renderer so all WebGL
-    // resources (shaders, textures, skinned mesh bone textures) are already
-    // in the correct GL context. A separate renderer/context fails for rigged models.
-    const rt = new THREE.WebGLRenderTarget(w, h, {
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      format: THREE.RGBAFormat,
-      type: THREE.UnsignedByteType,
-      depthBuffer: true,
-      stencilBuffer: false
-    });
+    // Resize the existing preview renderer to sprite dimensions and render
+    // directly to its canvas. This is the only reliable approach for rigged
+    // (SkinnedMesh) models: the GL context is the same one the preview uses,
+    // so bone textures, shaders, and geometry are already resident. A separate
+    // renderer or WebGLRenderTarget both fail because Three.js r134 does not
+    // re-upload bone matrix textures across framebuffer boundaries mid-session.
+    // preserveDrawingBuffer:true (set at construction) lets us read pixels via
+    // drawImage after each render call.
+    const area = document.getElementById('model-preview-area');
+    const prevW = area.clientWidth || 600;
+    const prevH = area.clientHeight || 400;
+    const prevNear = this.camera.near;
+    const prevFar  = this.camera.far;
+
+    this.renderer.setSize(w, h, false); // false = don't change CSS size
+    this.renderer.setPixelRatio(1);     // 1:1 pixel for exact capture
 
     const cameraPreset = document.getElementById('camera-preset').value;
     const { elevation: baseElev } = this._presetAngles(cameraPreset);
@@ -462,7 +467,10 @@ class Model3DRenderer {
     this.renderer.getClearColor(savedClearColor);
     const savedClearAlpha = this.renderer.getClearAlpha();
 
-    const pixelBuf = new Uint8Array(w * h * 4);
+    // Reusable 2D canvas for pixel readback
+    const capCanvas = document.createElement('canvas');
+    capCanvas.width = w; capCanvas.height = h;
+    const capCtx = capCanvas.getContext('2d');
 
     dirAngles.forEach((dirAngle, di) => {
       const baseAzRad = dirAngle * Math.PI / 180;
@@ -488,13 +496,12 @@ class Model3DRenderer {
           this.renderer.setClearColor(new THREE.Color(bgColor), 1);
         }
 
-        this.renderer.setRenderTarget(rt);
-        this.renderer.clear();
         this.renderer.render(this.scene, offCamera);
-        this.renderer.readRenderTargetPixels(rt, 0, 0, w, h, pixelBuf);
-        this.renderer.setRenderTarget(null);
 
-        const imageData = this._rtPixelsToImageData(pixelBuf, w, h);
+        // Read pixels via 2D canvas drawImage — works because preserveDrawingBuffer:true
+        capCtx.clearRect(0, 0, w, h);
+        capCtx.drawImage(this.renderer.domElement, 0, 0, w, h);
+        const imageData = capCtx.getImageData(0, 0, w, h);
 
         this.renderedSprites.push({
           dir: dirAngles[di],
@@ -509,20 +516,17 @@ class Model3DRenderer {
       }
     });
 
+    // Restore renderer to preview dimensions and camera state
     this.renderer.setClearColor(savedClearColor, savedClearAlpha);
-    rt.dispose();
-    this.importBtn.disabled = false;
-  }
+    this.renderer.setSize(prevW, prevH);
+    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+    this.camera.near = prevNear;
+    this.camera.far  = prevFar;
+    this.camera.aspect = prevW / prevH;
+    this.camera.updateProjectionMatrix();
+    if (this.controls) this.controls.update();
 
-  _rtPixelsToImageData(buffer, w, h) {
-    // readRenderTargetPixels fills rows bottom-to-top (WebGL convention).
-    // Flip vertically so ImageData is top-to-bottom.
-    const data = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) {
-      const srcRow = (h - 1 - y) * w * 4;
-      data.set(buffer.subarray(srcRow, srcRow + w * 4), y * w * 4);
-    }
-    return new ImageData(data, w, h);
+    this.importBtn.disabled = false;
   }
 
   _addSpriteCard(imageData, w, h, dirName, frameIdx, totalFrames) {
