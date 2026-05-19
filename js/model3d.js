@@ -451,14 +451,24 @@ class Model3DRenderer {
 
     this.model.updateMatrixWorld(true);
     const _box = new THREE.Box3().setFromObject(this.model);
+    // Expand bounds to include current bone world positions for posed/animated models
+    if (this.bones && this.bones.length > 0) {
+      const _bonePos = new THREE.Vector3();
+      this.bones.forEach(bone => {
+        bone.getWorldPosition(_bonePos);
+        _box.expandByPoint(_bonePos);
+      });
+    }
     const _sphere = new THREE.Sphere();
     _box.getBoundingSphere(_sphere);
-    const modelCenter = _sphere.center;
-    const s = _sphere.radius * 1.2;
-    const renderDist = Math.max(_sphere.radius * 6, 10);
+    const modelCenter = _sphere.center.clone();
+    const r = Math.max(_sphere.radius, 0.1);
+    // Ensure sphere fits both horizontally and vertically regardless of aspect ratio
+    const s = (r * 1.2) / Math.min(1, aspect);
+    const renderDist = Math.max(r * 6, 10);
     const offCamera = new THREE.OrthographicCamera(
       -s * aspect, s * aspect, s, -s,
-      0.01, renderDist * 2 + _sphere.radius * 2
+      0.01, renderDist * 2 + r * 2
     );
 
     this._applyLighting(document.getElementById('lighting-preset').value);
