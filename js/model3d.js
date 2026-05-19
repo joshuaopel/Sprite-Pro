@@ -144,9 +144,28 @@ class Model3DRenderer {
   // Legacy alias used elsewhere
   _applyCamera(preset) { this._setCameraToPreset(preset); }
 
+  // Scale the model by `factor` relative to the normalized 2-unit size.
+  // baseScale is only passed the first time (from loadModel); after that
+  // the stored this._baseNormScale is reused.
+  _applyModelScale(factor, baseScale) {
+    if (!this.model || !this._modelCenter || !this._modelSize) return;
+    if (baseScale !== undefined) this._baseNormScale = baseScale;
+    const s = this._baseNormScale * factor;
+    const c = this._modelCenter, sz = this._modelSize;
+    this.model.scale.setScalar(s);
+    this.model.position.set(
+      -c.x * s,
+      -c.y * s + (sz.y * s) / 2,
+      -c.z * s
+    );
+    this.model.updateMatrixWorld(true);
+    this._frameModel();
+  }
+
   // Auto-fit camera distance and target to the loaded model's bounding sphere
   _frameModel() {
     if (!this.model || !this.camera || !this.controls) return;
+    this.model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(this.model);
     const sphere = new THREE.Sphere();
     box.getBoundingSphere(sphere);
@@ -263,20 +282,28 @@ class Model3DRenderer {
         if (this.model) this.scene.remove(this.model);
         this.model = gltf.scene;
 
-        // Center and normalize scale
+        // Add to scene first so internal GLTF node transforms (root rotations,
+        // Y-up/Z-up corrections, etc.) are included in the bounding box
+        this.scene.add(this.model);
+        this.model.updateMatrixWorld(true);
+
+        // Compute bounds in world space with all transforms applied
         const box = new THREE.Box3().setFromObject(this.model);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
         const maxDim = Math.max(size.x, size.y, size.z) || 1;
-        const scale = 2 / maxDim;
-        this.model.scale.setScalar(scale);
-        // Recompute center after scaling
-        this.model.position.set(
-          -center.x * scale,
-          -center.y * scale + (size.y * scale) / 2,
-          -center.z * scale
-        );
-        this.scene.add(this.model);
+
+        // Store unscaled bounds so the scale slider can rescale from scratch
+        this._modelCenter = center.clone();
+        this._modelSize = size.clone();
+
+        const baseScale = 2 / maxDim;
+        this._applyModelScale(1.0, baseScale);
+
+        // Reset scale slider to 1×
+        const scaleSlider = document.getElementById('model-scale');
+        if (scaleSlider) { scaleSlider.value = 0; document.getElementById('model-scale-val').textContent = '1.0×'; }
+        document.getElementById('model-scale-section').style.display = '';
 
         // Detect skeleton for pose mode
         this.bones = [];
@@ -317,7 +344,6 @@ class Model3DRenderer {
 
         this.hint.style.display = 'none';
         this.renderBtn.disabled = false;
-        this._frameModel();
         URL.revokeObjectURL(url);
       },
       xhr => {
@@ -393,6 +419,7 @@ class Model3DRenderer {
     const aspect = w / h;
 
     // Auto-size frustum from model bounding sphere so any model fits
+    this.model.updateMatrixWorld(true);
     const _box = new THREE.Box3().setFromObject(this.model);
     const _sphere = new THREE.Sphere();
     _box.getBoundingSphere(_sphere);
@@ -845,6 +872,13 @@ class Model3DRenderer {
     // Frame model button — re-fit camera to model bounds at any time
     document.getElementById('frame-model-btn').addEventListener('click', () => {
       this._frameModel();
+    });
+
+    // Model scale slider — rescale from original bounds, then re-frame
+    document.getElementById('model-scale').addEventListener('input', e => {
+      const factor = Math.pow(2, +e.target.value);
+      document.getElementById('model-scale-val').textContent = factor.toFixed(2) + '×';
+      this._applyModelScale(factor);
     });
 
     // Custom camera sliders
