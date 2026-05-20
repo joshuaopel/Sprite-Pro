@@ -641,6 +641,13 @@ small { font-size: 10px; color: var(--text-dim); }
 .bone-item:hover { background: var(--bg3); color: var(--text); }
 .bone-item.active { background: rgba(91,143,249,0.2); color: var(--accent); }
 
+.gizmo-space-btn {
+  padding: 2px 7px; font-size: 10px; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 3px; cursor: pointer; color: var(--text-dim); transition: background 0.12s;
+}
+.gizmo-space-btn:hover { background: var(--border); color: var(--text); }
+.gizmo-space-btn.active { background: var(--accent); border-color: var(--accent-hover); color: #fff; }
+
 .bone-axis-row { display: flex; align-items: center; gap: 5px; }
 .axis-label { font-size: 10px; font-weight: 700; width: 10px; flex-shrink: 0; text-align: center; }
 .x-axis { color: #ff6b6b; }

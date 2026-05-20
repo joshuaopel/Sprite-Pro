@@ -28,6 +28,7 @@ class Model3DRenderer {
     this._boneStartLocalQ = null;
     this.boneOverlayCanvas = null;
     this.boneOverlayCtx = null;
+    this._transformControls = null;
 
     this.previewCanvas = document.getElementById('model-preview-canvas');
     this.hint = document.getElementById('model-hint');
@@ -74,6 +75,28 @@ class Model3DRenderer {
       this.controls.minDistance = 1;
       this.controls.maxDistance = 30;
       this.controls.update();
+    }
+
+    // Rotation gizmo for pose mode (hidden until a bone is selected)
+    if (typeof THREE.TransformControls !== 'undefined') {
+      this._transformControls = new THREE.TransformControls(this.camera, this.renderer.domElement);
+      this._transformControls.setMode('rotate');
+      this._transformControls.setSpace('local');
+      this._transformControls.visible = false;
+      this.scene.add(this._transformControls);
+
+      // While dragging the gizmo, disable orbit so the camera stays still
+      this._transformControls.addEventListener('dragging-changed', e => {
+        if (this.controls) this.controls.enabled = !e.value;
+      });
+
+      // Keep sliders in sync as the gizmo rotates the bone
+      this._transformControls.addEventListener('objectChange', () => {
+        if (this.selectedBone) {
+          this.selectedBone.updateMatrixWorld(true);
+          this._updateBoneSliders();
+        }
+      });
     }
 
     // Lighting
@@ -648,6 +671,9 @@ class Model3DRenderer {
 
     const startDrag = (e, pos) => {
       if (!this.poseMode) return false;
+      // Don't intercept clicks on the TransformControls gizmo handles
+      // (.axis is non-null when the pointer is hovering over a handle)
+      if (this._transformControls && this._transformControls.axis !== null) return false;
       const bone = this._findNearestBone(pos.x, pos.y);
       if (!bone) return false;
       e.stopPropagation();
@@ -704,6 +730,11 @@ class Model3DRenderer {
     this.poseMode = false;
     this.selectedBone = null;
     this._boneDragging = false;
+    if (this._transformControls) {
+      this._transformControls.detach();
+      this._transformControls.visible = false;
+    }
+    if (this.controls) this.controls.enabled = true;
     document.getElementById('bone-overlay-canvas').style.display = 'none';
     if (this.boneOverlayCtx) {
       const c = this.boneOverlayCanvas;
@@ -802,6 +833,11 @@ class Model3DRenderer {
     document.getElementById('selected-bone-name').textContent = bone.name || '(bone)';
     document.getElementById('selected-bone-panel').style.display = 'flex';
     this._updateBoneSliders();
+    // Attach rotation gizmo to the selected bone
+    if (this._transformControls) {
+      this._transformControls.attach(bone);
+      this._transformControls.visible = true;
+    }
     // Scroll into view in list
     const el = document.querySelector(`.bone-item[data-uuid="${bone.uuid}"]`);
     if (el) el.scrollIntoView({ block: 'nearest' });
@@ -1049,6 +1085,15 @@ class Model3DRenderer {
         this.selectedBone.rotation[axis] = rad;
         this.selectedBone.updateMatrixWorld(true);
         document.getElementById(`bone-rot-${axis}-val`).textContent = e.target.value + '°';
+      });
+    });
+
+    // Gizmo space toggle
+    ['local','world'].forEach(space => {
+      document.getElementById(`gizmo-space-${space}`).addEventListener('click', () => {
+        document.getElementById('gizmo-space-local').classList.toggle('active', space === 'local');
+        document.getElementById('gizmo-space-world').classList.toggle('active', space === 'world');
+        if (this._transformControls) this._transformControls.setSpace(space);
       });
     });
 
