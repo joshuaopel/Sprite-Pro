@@ -108,7 +108,7 @@
     if (ctrl && e.key === 's') { e.preventDefault(); exporter.exportPng(); return; }
     if (ctrl && e.key === 'c') { e.preventDefault(); copySelection(); return; }
     if (ctrl && e.key === 'x') { e.preventDefault(); copySelection(); deleteSelection(); return; }
-    if (ctrl && e.key === 'v') { e.preventDefault(); pasteSelection(); return; }
+    if (ctrl && e.key === 'v') { return; } // handled by the paste event below
     if (e.key === 'Delete' || e.key === 'Backspace') {
       if (toolEng.selection) { e.preventDefault(); deleteSelection(); return; }
     }
@@ -241,6 +241,71 @@
         layer.data[di+3] = imageData.data[si+3];
       }
     }
+    history.push(layerMgr.layers);
+    canvasEng.render();
+    canvasEng.renderThumbs();
+  }
+
+  // ===== SYSTEM CLIPBOARD PASTE =====
+  document.addEventListener('paste', async e => {
+    // Don't intercept paste inside text inputs
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const blob = item.getAsFile();
+          if (!blob) continue;
+          try {
+            const bitmap = await createImageBitmap(blob);
+            _pasteImageBitmap(bitmap);
+          } catch (err) {
+            console.error('Clipboard image decode failed', err);
+          }
+          return;
+        }
+      }
+    }
+    // No image in OS clipboard — fall back to internal app clipboard
+    pasteSelection();
+  });
+
+  function _pasteImageBitmap(bitmap) {
+    const cw = layerMgr.width;
+    const ch = layerMgr.height;
+
+    // Scale to fit canvas, preserving aspect ratio, centered
+    const scale = Math.min(cw / bitmap.width, ch / bitmap.height);
+    const dw = Math.round(bitmap.width  * scale);
+    const dh = Math.round(bitmap.height * scale);
+    const ox = Math.floor((cw - dw) / 2);
+    const oy = Math.floor((ch - dh) / 2);
+
+    const tmp = document.createElement('canvas');
+    tmp.width = cw; tmp.height = ch;
+    const ctx = tmp.getContext('2d');
+    ctx.imageSmoothingEnabled = false; // nearest-neighbour for pixel art
+    ctx.drawImage(bitmap, ox, oy, dw, dh);
+    const pasted = ctx.getImageData(0, 0, cw, ch);
+
+    const fi = timeline.currentFrame;
+    const layer = layerMgr.getActiveFrame(fi);
+    // Alpha-composite pasted image over current layer pixels
+    for (let i = 0; i < pasted.data.length; i += 4) {
+      const sa = pasted.data[i+3] / 255;
+      if (sa === 0) continue;
+      const da = layer.data[i+3] / 255;
+      const oa = sa + da * (1 - sa);
+      if (oa < 0.001) { layer.data[i+3] = 0; continue; }
+      layer.data[i]   = Math.round((pasted.data[i]   * sa + layer.data[i]   * da * (1 - sa)) / oa);
+      layer.data[i+1] = Math.round((pasted.data[i+1] * sa + layer.data[i+1] * da * (1 - sa)) / oa);
+      layer.data[i+2] = Math.round((pasted.data[i+2] * sa + layer.data[i+2] * da * (1 - sa)) / oa);
+      layer.data[i+3] = Math.round(oa * 255);
+    }
+    layerMgr.setActiveFrame(fi, layer);
     history.push(layerMgr.layers);
     canvasEng.render();
     canvasEng.renderThumbs();
