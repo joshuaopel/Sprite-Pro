@@ -68,8 +68,17 @@ class ToolEngine {
 
     switch (this.currentTool) {
       case 'pencil':
+        this._plotBrush(layer, x, y, useColor, false);
+        this.layerMgr.setActiveFrame(fi, layer);
+        this.canvas.render();
+        break;
       case 'brush':
-        this._plotBrush(layer, x, y, useColor);
+        this._plotBrush(layer, x, y, useColor, true);
+        this.layerMgr.setActiveFrame(fi, layer);
+        this.canvas.render();
+        break;
+      case 'painterly':
+        this._plotPainterly(layer, x, y, useColor);
         this.layerMgr.setActiveFrame(fi, layer);
         this.canvas.render();
         break;
@@ -116,10 +125,21 @@ class ToolEngine {
     const useColor = button === 2 ? this.colorMgr.bgRgba : this.colorMgr.fgRgba;
 
     switch (this.currentTool) {
-      case 'pencil':
+      case 'pencil': {
+        const pts = bresenhamLine(this._prevX, this._prevY, x, y);
+        pts.forEach(([px, py]) => this._plotBrush(layer, px, py, useColor, false));
+        this.canvas.render();
+        break;
+      }
       case 'brush': {
         const pts = bresenhamLine(this._prevX, this._prevY, x, y);
-        pts.forEach(([px, py]) => this._plotBrush(layer, px, py, useColor));
+        pts.forEach(([px, py]) => this._plotBrush(layer, px, py, useColor, true));
+        this.canvas.render();
+        break;
+      }
+      case 'painterly': {
+        const pts = bresenhamLine(this._prevX, this._prevY, x, y);
+        pts.forEach(([px, py]) => this._plotPainterly(layer, px, py, useColor));
         this.canvas.render();
         break;
       }
@@ -189,6 +209,7 @@ class ToolEngine {
     switch (this.currentTool) {
       case 'pencil':
       case 'brush':
+      case 'painterly':
       case 'eraser':
         this._onPaint();
         break;
@@ -234,20 +255,51 @@ class ToolEngine {
     data[i+3] = Math.round(out_a*255);
   }
 
-  _plotBrush(imageData, cx, cy, color) {
+  _plotBrush(imageData, cx, cy, color, feather = false) {
     const sz = this.brushSize;
     const half = Math.floor(sz / 2);
     if (sz === 1) {
       this._plotPixel(imageData, cx, cy, color);
       return;
     }
-    // Circle brush
+    const r2 = half * half;
     for (let dy = -half; dy <= half; dy++) {
       for (let dx = -half; dx <= half; dx++) {
-        if (dx*dx+dy*dy <= half*half) {
+        const d2 = dx*dx + dy*dy;
+        if (d2 > r2) continue;
+        if (feather && half > 1) {
+          // Smooth cosine falloff from center to edge
+          const t = Math.sqrt(d2) / half;
+          const a = Math.round(color[3] * (0.5 + 0.5 * Math.cos(t * Math.PI)));
+          this._plotPixel(imageData, cx+dx, cy+dy, [color[0], color[1], color[2], a]);
+        } else {
           this._plotPixel(imageData, cx+dx, cy+dy, color);
         }
       }
+    }
+  }
+
+  // Painterly brush: scatters bristle-like dabs with subtle color/opacity variation
+  _plotPainterly(imageData, cx, cy, color) {
+    const sz = this.brushSize;
+    const half = Math.max(Math.floor(sz / 2), 1);
+    const [r, g, b, a] = color;
+    // Number of dabs scales with brush area
+    const dabs = Math.max(4, Math.round(half * half * 1.5));
+    for (let i = 0; i < dabs; i++) {
+      // Random position within a slightly elongated ellipse (bristle spread)
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = Math.random() * half;
+      const px = Math.round(cx + dist * Math.cos(angle));
+      const py = Math.round(cy + dist * Math.sin(angle) * 0.7);
+      // Slight hue-shift via RGB channel jitter (±10%)
+      const jitter = () => Math.round((Math.random() - 0.5) * 25);
+      const cr = Math.min(255, Math.max(0, r + jitter()));
+      const cg = Math.min(255, Math.max(0, g + jitter()));
+      const cb = Math.min(255, Math.max(0, b + jitter()));
+      // Opacity varies per dab (40–100% of stroke alpha)
+      const ca = Math.round(a * (0.4 + Math.random() * 0.6));
+      this._plotPixel(imageData, px, py, [cr, cg, cb, ca]);
     }
   }
 

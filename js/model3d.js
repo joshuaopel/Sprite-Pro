@@ -285,6 +285,15 @@ class Model3DRenderer {
       if (this.mixer) this.mixer.update(delta);
       if (this.controls) this.controls.update();
       if (this.renderer && this.scene && this.camera) {
+        // Keep near plane proportional to zoom distance so close-up views never clip
+        if (this.controls) {
+          const camDist = this.camera.position.distanceTo(this.controls.target);
+          const dynamicNear = Math.max(0.0001, camDist * 0.001);
+          if (Math.abs(this.camera.near - dynamicNear) / dynamicNear > 0.1) {
+            this.camera.near = dynamicNear;
+            this.camera.updateProjectionMatrix();
+          }
+        }
         this.renderer.render(this.scene, this.camera);
       }
       this._drawBoneOverlay();
@@ -346,7 +355,19 @@ class Model3DRenderer {
 
         const baseScale = 2 / maxDim;
         this._applyModelScale(1.0, baseScale);
-        this._frameModel(); // frame AFTER scale applied
+
+        // Reset camera and controls to a clean state before framing,
+        // so any previous zoom/pan position doesn't carry over
+        this.controls.target.set(0, 0, 0);
+        this.controls.minDistance = 0.01;
+        this.controls.maxDistance = 10000;
+        this.camera.position.set(0, 2, 5);
+        this.camera.near = 0.01;
+        this.camera.far = 10000;
+        this.camera.updateProjectionMatrix();
+        this.controls.update();
+
+        this._frameModel(); // frame AFTER scale + camera reset
 
         // Reset scale slider to 1×
         const scaleSlider = document.getElementById('model-scale');
