@@ -675,7 +675,11 @@ class Model3DRenderer {
       // (.axis is non-null when the pointer is hovering over a handle)
       if (this._transformControls && this._transformControls.axis !== null) return false;
       const bone = this._findNearestBone(pos.x, pos.y);
-      if (!bone) return false;
+      if (!bone) {
+        // Click in empty space — deselect the current bone and hide gizmo
+        this._deselectBone();
+        return false;
+      }
       e.stopPropagation();
       this._selectBone(bone);
       this._boneDragging = true;
@@ -823,6 +827,17 @@ class Model3DRenderer {
       if (d < bestDist) { bestDist = d; best = bone; }
     });
     return best;
+  }
+
+  _deselectBone() {
+    if (!this.selectedBone) return;
+    this.selectedBone = null;
+    document.querySelectorAll('.bone-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('selected-bone-panel').style.display = 'none';
+    if (this._transformControls) {
+      this._transformControls.detach();
+      this._transformControls.visible = false;
+    }
   }
 
   _selectBone(bone) {
